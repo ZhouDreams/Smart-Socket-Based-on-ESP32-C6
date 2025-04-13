@@ -20,21 +20,6 @@ void RELAY_GPIO2_INST()
     ESP_LOGI(TAG, "GPIO2 has been installed.");
 }
 
-void relay_test()
-{
-    gpio_reset_pin(GPIO_NUM_1);
-    gpio_set_direction(GPIO_NUM_1, GPIO_MODE_OUTPUT);
-    for(int i=1;i<=300;i++)
-    {
-        gpio_set_level(GPIO_NUM_1, 0);
-        printf("GPIO1 changed to %d!\n",0);
-        vTaskDelay(pdMS_TO_TICKS(2000));
-        gpio_set_level(GPIO_NUM_1, 1);
-        printf("GPIO1 changed to %d!\n",1);
-        vTaskDelay(pdMS_TO_TICKS(2000));
-    }
-}
-
 void RELAY_SWITCH_ON()
 {
     gpio_set_level(GPIO_NUM_2, RELAY_ON);
@@ -64,7 +49,7 @@ void RELAY_TASK()
                 last_event_time = now; //记录该次触发时间
 
                 CURRENT_STATUS = !CURRENT_STATUS; //状态翻转
-                gpio_set_level(GPIO_NUM_1, CURRENT_STATUS); //GPIO1输出翻转
+                gpio_set_level(GPIO_NUM_2, CURRENT_STATUS); //GPIO2输出翻转
 
                 //RELAY_STATUS_UPDATE(CURRENT_STATUS); //更新云端继电器状态
 
@@ -74,5 +59,18 @@ void RELAY_TASK()
                 else ESP_LOGI(TAG, "Current Relay level: OFF -> ON");
             }
         }
+    }
+}
+
+void relay_test()
+{
+    for(int i=1;i<=300;i++)
+    {
+        gpio_set_level(GPIO_RELAY_NUM, RELAY_ON);
+        ESP_LOGI(TAG, "Relay has been switched to ON.");
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        gpio_set_level(GPIO_RELAY_NUM, RELAY_OFF);
+        ESP_LOGI(TAG, "Relay has been switched to OFF.");
+        vTaskDelay(pdMS_TO_TICKS(2000));
     }
 }
