@@ -19,11 +19,13 @@
 #define UART_4G_BAUD_RATE 115200
 #define UART_4G_TX 6 //GPIO6
 #define UART_4G_RX 7 //GPIO7
+extern uart_config_t uart_config_4G;
 
 #define UART_BL0942_NUM LP_UART_NUM_0
 #define UART_BL0942_BAUD_RATE 9600 //BL0942
 #define UART_BL0942_TX 5 //GPIO5
 #define UART_BL0942_RX 4 //GPIO4
+extern uart_config_t uart_config_BL0942;
 
 #define BUF_SIZE 1024
 
