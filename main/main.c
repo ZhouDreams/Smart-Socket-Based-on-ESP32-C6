@@ -39,8 +39,8 @@ void setup()
 {
     ESP_LOGI(TAG, "Enter setup.");
 
-    GPIO2_INST();
-    GPIO3_INST();
+    RELAY_GPIO2_INST();
+    BUTTON_GPIO3_INST();
 
     UART_4G_INST();
     xTaskCreate(AIR780EP_INST, "AIR780EP_INST", 4096, NULL, 1, NULL);
