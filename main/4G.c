@@ -131,56 +131,56 @@ char* SEND_AT_CMD(const char* cmd, int delay)
 }
 */
 
-void SYNC_DATA_TRANSFER(SYNC_DATA_t DATA)
-{
-    uart_write_bytes(UART_4G_NUM, AT_MPUB, strlen(AT_MPUB));
-    printf("Written: %s\n",AT_MPUB);
-    vTaskDelay(pdMS_TO_TICKS(AT_RESPONSE_DELAY));
+// void SYNC_DATA_TRANSFER(SYNC_DATA_t DATA)
+// {
+//     uart_write_bytes(UART_4G_NUM, AT_MPUB, strlen(AT_MPUB));
+//     printf("Written: %s\n",AT_MPUB);
+//     vTaskDelay(pdMS_TO_TICKS(AT_RESPONSE_DELAY));
 
-}
+// }
 
-void RELAY_STATUS_UPDATE(int new_status)
-{
-    if(new_status == RELAY_ON) uart_write_bytes(UART_4G_NUM, AT_MPUB_RELAY_ON, strlen(AT_MPUB_RELAY_ON));
-        else uart_write_bytes(UART_4G_NUM, AT_MPUB_RELAY_OFF, strlen(AT_MPUB_RELAY_OFF));
+// void RELAY_STATUS_UPDATE(int new_status)
+// {
+//     if(new_status == RELAY_ON) uart_write_bytes(UART_4G_NUM, AT_MPUB_RELAY_ON, strlen(AT_MPUB_RELAY_ON));
+//         else uart_write_bytes(UART_4G_NUM, AT_MPUB_RELAY_OFF, strlen(AT_MPUB_RELAY_OFF));
         
-    ESP_LOGI(TAG, "New status %d updated to cloud platform.", new_status);
-}
+//     ESP_LOGI(TAG, "New status %d updated to cloud platform.", new_status);
+// }
 
-void SYNC_DATA_RECEIVE()
-{
+// void SYNC_DATA_RECEIVE()
+// {
 
-}
+// }
 
-void UART1_EVENT_TASK()
-{
-    ESP_LOGI(TAG, "UART1_EVENT_TASK has been started.");
+// void UART1_EVENT_TASK()
+// {
+//     ESP_LOGI(TAG, "UART1_EVENT_TASK has been started.");
 
-    UART_BL0942_INST();
+//     UART_BL0942_INST();
 
-    uart_event_t event;
+//     uart_event_t event;
 
-    while(1)
-    {
-        if(xQueueReceive(uart1_event_queue, &event, portMAX_DELAY))
-        {
-            ESP_LOGI(TAG, "Receive event.");
-            if(event.type == UART_DATA)
-            {
-                ESP_LOGI(TAG, "[UART DATA]: %d", event.size);
-                uint8_t data[event.size];
-                uart_read_bytes(UART_4G_NUM, data, event.size, portMAX_DELAY);
-                printf("%s",data);
+//     while(1)
+//     {
+//         if(xQueueReceive(uart1_event_queue, &event, portMAX_DELAY))
+//         {
+//             ESP_LOGI(TAG, "Receive event.");
+//             if(event.type == UART_DATA)
+//             {
+//                 ESP_LOGI(TAG, "[UART DATA]: %d", event.size);
+//                 uint8_t data[event.size];
+//                 uart_read_bytes(UART_4G_NUM, data, event.size, portMAX_DELAY);
+//                 printf("%s",data);
                 
-                /* char msg_buf[event.size+1];
-                memcpy(msg_buf, data, event.size);
-                msg_buf[event.size] = '\0';
-                printf("%s",msg_buf);
-                if(strstr(msg_buf, "+MSUB:") != NULL)
-                {
-                    printf("msg_buf: %c",msg_buf[42]);
-                } */
-            }
-        }
-    }
-}
+//                 /* char msg_buf[event.size+1];
+//                 memcpy(msg_buf, data, event.size);
+//                 msg_buf[event.size] = '\0';
+//                 printf("%s",msg_buf);
+//                 if(strstr(msg_buf, "+MSUB:") != NULL)
+//                 {
+//                     printf("msg_buf: %c",msg_buf[42]);
+//                 } */
+//             }
+//         }
+//     }
+// }
