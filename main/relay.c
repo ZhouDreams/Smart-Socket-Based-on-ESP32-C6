@@ -13,6 +13,13 @@
 
 #define TAG "relay.c"
 
+void RELAY_GPIO2_INST()
+{
+    gpio_set_direction(GPIO_NUM_2, GPIO_MODE_OUTPUT);
+    gpio_set_level(GPIO_NUM_2, RELAY_OFF);
+    ESP_LOGI(TAG, "GPIO2 has been installed.");
+}
+
 void relay_test()
 {
     gpio_reset_pin(GPIO_NUM_1);

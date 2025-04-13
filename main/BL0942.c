@@ -15,6 +15,14 @@
 
 #define TAG "BL0942.c"
 
+void UART_BL0942_INST()
+{
+    ESP_ERROR_CHECK(uart_driver_install(UART_BL0942_NUM, BUF_SIZE, BUF_SIZE, 10, &uart1_event_queue, 0));
+    ESP_ERROR_CHECK(uart_param_config(UART_BL0942_NUM, &uart_config_BL0942));
+    ESP_ERROR_CHECK(uart_set_pin(UART_BL0942_NUM, UART_BL0942_TX, UART_BL0942_RX, -1, -1));
+    ESP_LOGI(TAG, "UART_BL0942 has been installed.\n");
+}
+
 void BL0942_READ_TASK()
 {
     char cmd = '\0';
@@ -68,13 +76,4 @@ void BL0942_READ_TASK()
     } 
 
 }
-
-
-int READ_VRMS()
-{
-
-    return 0;
-}
-
-
 

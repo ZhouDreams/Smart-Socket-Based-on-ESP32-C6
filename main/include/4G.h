@@ -30,6 +30,7 @@ typedef struct{
     bool WIFI_or_4G; //1: WIFI mode; 0: 4G mode.
 } SYNC_DATA_t;
 
+void UART_4G_INST(); //4G UART初始化
 void AIR780EP_INST(); //初始化4G模块
 char* SEND_AT_CMD(const char* cmd, int delay); //发送AT指令并返回串口的回复内容
 void MQTT_INST(); //MQTT服务初始化

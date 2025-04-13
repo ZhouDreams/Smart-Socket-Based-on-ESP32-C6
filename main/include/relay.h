@@ -8,6 +8,7 @@
 #ifndef __RELAY_H__
 #define __RELAY_H__
 
+void RELAY_GPIO2_INST(); //继电器GPIO2初始化
 void RELAY_SWITCH_ON();
 void RELAY_SWITCH_OFF();
 void MQTT_SWITCH_RELAY();

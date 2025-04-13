@@ -1,6 +1,6 @@
 /*
     File: config.h
-    Memo: 所有跟配置外设有关的函数和变量，所有自定义的配置结构体
+    Memo: 所有需要配置的参数
     Coder: Junxi Zhou, School of Microelectronics, South China University of Technology
     Email: zhoudreamstk@foxmail.com
 */
@@ -14,7 +14,7 @@
 #include "esp_netif.h"
 #include "esp_wifi.h"
 
-//UART related
+//----------UART related----------
 #define UART_4G_NUM UART_NUM_1
 #define UART_4G_BAUD_RATE 115200
 #define UART_4G_TX 6 //GPIO6
@@ -27,33 +27,23 @@
 
 #define BUF_SIZE 1024
 
-void UART_4G_INST(); //4G UART初始化
-void UART_BL0942_INST(); //BL0942 UART初始化
-
-//GPIO Related
+//----------GPIO Related----------
 #define GPIO2_PIN 5 //继电器
 #define GPIO3_PIN 6 //按钮
 
-void GPIO2_INST(); //继电器状态初始化
-void GPIO3_INST(); //按钮初始化
-
-//Interruption related
+//----------Interruption related----------
 extern QueueHandle_t uart0_event_queue; //UART0串口中断队列句柄
 extern QueueHandle_t uart1_event_queue; //UART1串口中断队列句柄
 extern QueueHandle_t relay_event_queue; //继电器控制队列句柄
 
-void BUTTON_ISR_HANDLER(void* arg); //按钮GPIO中断服务函数
-
-//Relay related
+//----------Relay related----------
 #define RELAY_ON 0
 #define RELAY_OFF 1
 
 //WIFI related
 
 
-void WIFI_INIT();
-
-//MQTT related
+//----------MQTT related----------
 #define AT_MCONFIG "AT+MCONFIG=\"socket-0\",\"zhoudreams\",\"sbzjx250\"\r\n" //设置 MQTT 相关参数
 #define AT_MIPSTART "AT+MIPSTART=\"mqtt.jovisdreams.site\",1883\r\n" //建立 TCP 连接
 #define AT_MCONNECT "AT+MCONNECT=0,300\r\n" //客户端向服务器请求会话连接

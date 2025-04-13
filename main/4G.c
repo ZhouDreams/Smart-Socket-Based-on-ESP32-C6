@@ -17,6 +17,14 @@
 
 #define TAG "4G.c"
 
+void UART_4G_INST()
+{
+    ESP_ERROR_CHECK(uart_driver_install(UART_4G_NUM, BUF_SIZE, BUF_SIZE, 10, &uart0_event_queue, 0));
+    ESP_ERROR_CHECK(uart_param_config(UART_4G_NUM, &uart_config_4G));
+    ESP_ERROR_CHECK(uart_set_pin(UART_4G_NUM, UART_4G_TX, UART_4G_RX, -1, -1));
+    ESP_LOGI(TAG, "UART_4G has been installed.");
+}
+
 void AIR780EP_INST()
 {
     char response[BUF_SIZE] = "\0";

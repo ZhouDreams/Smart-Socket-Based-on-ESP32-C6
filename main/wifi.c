@@ -17,6 +17,8 @@
 char WIFI_SSID[] = "LoveGoldenGlow";
 char WIFI_PASSWD[] = "sbzjx250";
 
-EventGroupHandle_t wifi_event_group;
-esp_netif_t *sta_netif;
-wifi_init_config_t wifi_config;
+void WIFI_INIT()
+{
+    
+}
+
