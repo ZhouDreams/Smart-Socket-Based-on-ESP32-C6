@@ -32,6 +32,8 @@ extern uart_config_t uart_config_BL0942;
 //----------GPIO Related----------
 #define GPIO2_PIN 5 //继电器
 #define GPIO3_PIN 6 //按钮
+#define GPIO_RELAY_NUM GPIO_NUM_2
+#define GPIO_BUTTON_NUM GPIO_NUM_3
 
 //----------Interruption related----------
 extern QueueHandle_t uart0_event_queue; //UART0串口中断队列句柄
