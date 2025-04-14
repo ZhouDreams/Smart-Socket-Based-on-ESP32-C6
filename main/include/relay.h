@@ -9,8 +9,7 @@
 #define __RELAY_H__
 
 void RELAY_GPIO2_INST(); //继电器GPIO2初始化
-void RELAY_SWITCH_ON();
-void RELAY_SWITCH_OFF();
+void RELAY_SET_LEVEL(int level);
 void MQTT_SWITCH_RELAY();
 void MQTT_SET_RELAY(bool value);
 void RELAY_TASK(); //继电器事件处理程序
