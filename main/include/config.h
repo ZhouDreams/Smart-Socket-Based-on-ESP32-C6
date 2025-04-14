@@ -38,13 +38,21 @@ extern uart_config_t uart_config_BL0942;
 //----------Interruption related----------
 extern QueueHandle_t uart0_event_queue; //UART0串口中断队列句柄
 extern QueueHandle_t uart1_event_queue; //UART1串口中断队列句柄
-extern QueueHandle_t relay_event_queue; //继电器控制队列句柄
+extern QueueHandle_t relay_event_queue; //继电器事件队列句柄
 
 //----------Relay related----------
 #define RELAY_ON 0
 #define RELAY_OFF 1
 
-//WIFI related
+typedef enum{
+    FROM_BUTTON = 0,
+    FROM_INTERNET = 1
+} RELAY_CHANGE_SOURCE;  //继电器状态改变时的事件来源类型
+
+//----------Button related----------
+
+
+//----------WIFI related----------
 
 
 //----------MQTT related----------
@@ -56,11 +64,6 @@ extern QueueHandle_t relay_event_queue; //继电器控制队列句柄
 #define AT_MPUB_RELAY_OFF "AT+MPUB=\"smartsocket/relay_status\",0,0,1\r\n"
 #define AT_MSUB_RELAY "AT+MSUB=\"smartsocket/relay_status\",0\r\n"
 #define AT_PING "AT+CIPPING=\"117.72.37.56\"\r\n"
-
-typedef enum{
-    FROM_BUTTON = 0,
-    FROM_INTERNET = 1
-} RELAY_CHANGE_SOURCE;  //继电器状态改变时的事件来源类型
 
 
 #endif
