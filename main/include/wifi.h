@@ -8,7 +8,6 @@
 #ifndef __WIFI_H__
 #define __WIFI_H__
 
-void WIFI_INIT();
-void WIFI_CONNECT();
+void WIFI_INIT_STA(void);
 
 #endif
