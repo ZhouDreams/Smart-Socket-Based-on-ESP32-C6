@@ -17,11 +17,11 @@
 
 void BUTTON_GPIO3_INST()
 {
-    gpio_set_direction(GPIO_NUM_3, GPIO_MODE_INPUT);
-    gpio_set_pull_mode(GPIO_NUM_3, GPIO_PULLDOWN_ONLY);
-    gpio_set_intr_type(GPIO_NUM_3, GPIO_INTR_POSEDGE); //设置中断为上升沿触发
+    gpio_set_direction(GPIO_BUTTON_NUM, GPIO_MODE_INPUT);
+    gpio_set_pull_mode(GPIO_BUTTON_NUM, GPIO_PULLDOWN_ONLY);
+    gpio_set_intr_type(GPIO_BUTTON_NUM, GPIO_INTR_POSEDGE); //设置中断为上升沿触发
 
-    ESP_LOGI(TAG, "GPIO3 has been installed.");
+    ESP_LOGI(TAG, "Button has been installed.");
 }
 
 void IRAM_ATTR BUTTON_ISR_HANDLER(void* arg)

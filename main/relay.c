@@ -15,19 +15,19 @@
 
 void RELAY_GPIO2_INST()
 {
-    gpio_set_direction(GPIO_NUM_2, GPIO_MODE_OUTPUT);
-    gpio_set_level(GPIO_NUM_2, RELAY_OFF);
-    ESP_LOGI(TAG, "GPIO2 has been installed.");
+    gpio_set_direction(GPIO_RELAY_NUM, GPIO_MODE_OUTPUT);
+    gpio_set_level(GPIO_RELAY_NUM, RELAY_OFF);
+    ESP_LOGI(TAG, "Relay has been installed.");
 }
 
 void RELAY_SWITCH_ON()
 {
-    gpio_set_level(GPIO_NUM_2, RELAY_ON);
+    gpio_set_level(GPIO_RELAY_NUM, RELAY_ON);
 }
 
 void RELAY_SWITCH_OFF()
 {
-    gpio_set_level(GPIO_NUM_2, RELAY_OFF);
+    gpio_set_level(GPIO_RELAY_NUM, RELAY_OFF);
 }
 
 void RELAY_TASK()
@@ -49,12 +49,12 @@ void RELAY_TASK()
                 last_event_time = now; //记录该次触发时间
 
                 CURRENT_STATUS = !CURRENT_STATUS; //状态翻转
-                gpio_set_level(GPIO_NUM_2, CURRENT_STATUS); //GPIO2输出翻转
+                gpio_set_level(GPIO_RELAY_NUM, CURRENT_STATUS); //设置继电器新状态
 
                 //RELAY_STATUS_UPDATE(CURRENT_STATUS); //更新云端继电器状态
 
-                if(change == FROM_BUTTON) ESP_LOGI(TAG, "Relay level change from button!");
-                else ESP_LOGI(TAG, "Relay level change from Internet!");
+                if(change == FROM_BUTTON) ESP_LOGI(TAG, "Relay switched from button!");
+                else ESP_LOGI(TAG, "Relay switched change from Internet!");
                 if(CURRENT_STATUS == RELAY_OFF) ESP_LOGI(TAG, "Current Relay level: ON -> OFF");
                 else ESP_LOGI(TAG, "Current Relay level: OFF -> ON");
             }
