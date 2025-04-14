@@ -104,8 +104,8 @@ char* SEND_AT_CMD(const char* cmd, int delay)
     static char buffer[BUF_SIZE] = "\0";
     int len = uart_read_bytes(UART_4G_NUM, buffer, BUF_SIZE - 1, 10);
 
-    ESP_LOGI(TAG, "AT Response:");
-    printf("%s",buffer);
+    // ESP_LOGI(TAG, "AT Response:");
+    // printf("%s",buffer);
 
     if (len > 0) {
         buffer[len] = '\0';
