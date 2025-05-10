@@ -1,5 +1,5 @@
 /*
-    File: wifi.h
+    File: wifi.c
     Memo: WIFI相关
     Coder: Junxi Zhou, School of Microelectronics, South China University of Technology
     Email: zhoudreamstk@foxmail.com
@@ -14,28 +14,16 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
-
 #include "lwip/err.h"
 #include "lwip/sys.h"
-
-#define WIFI_SSID      "LoveGoldenGlow"
-#define WIFI_PASSWD      "sbzjx250"
-#define WIFI_MAXIMUM_RETRY  10
-
-#define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_WPA2_PSK
-#define ESP_WIFI_SAE_MODE WPA3_SAE_PWE_BOTH
-#define EXAMPLE_H2E_IDENTIFIER CONFIG_ESP_WIFI_PW_ID
-#define CONFIG_ESP_WIFI_PW_ID ""
+#include "wifi.h"
+#include "config.h"
 
 static EventGroupHandle_t wifi_event_group; //WIFI事件组
 
-//事件位，WIFI已连接是BIT0，WIFI连接失败是BIT1
-#define WIFI_CONNECTED_BIT BIT0
-#define WIFI_FAIL_BIT      BIT1
-
 #define TAG "wifi.c"
 
-static int s_retry_num = 0; //WIFI连接失败后重试次数
+static int s_retry_num = 0; //WIFI连接失败后已重试次数
 
 //WIFI事件处理函数
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
@@ -50,11 +38,11 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         if (s_retry_num < WIFI_MAXIMUM_RETRY) {
             esp_wifi_connect();
             s_retry_num++;
-            ESP_LOGI(TAG, "retry to connect to the AP");
+            ESP_LOGI(TAG, "Retrying to connect to the AP...");
         }
         else {
             xEventGroupSetBits(wifi_event_group, WIFI_FAIL_BIT);
-            ESP_LOGI(TAG,"connect to the AP fail");
+            ESP_LOGI(TAG,"Connection to the AP failed.");
         }
     }
     //获取IP
@@ -66,18 +54,42 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     }
 }
 
-void WIFI_INIT_STA(void)
+static wifi_config_t wifi_config_ap = {
+    .ap = {
+        .ssid = "ESP32-C6",
+        .ssid_len = strlen("ESP32-C6"),
+        .channel = 1,
+        .password = "",
+        .max_connection = 10,
+        .authmode = WIFI_AUTH_OPEN,
+    }
+};
+
+static wifi_config_t wifi_config_sta = {
+    .sta = {
+        .ssid = WIFI_SSID, //要连接的WIFI SSID
+        .password = WIFI_PASSWD, //要连接的WIFI密码
+        .threshold.authmode = WIFI_AUTH_WPA2_PSK, //使用WPA2安全协议
+        .sae_pwe_h2e = WPA3_SAE_PWE_BOTH,
+    }
+};
+
+void WIFI_INIT()
 {
-    wifi_event_group = xEventGroupCreate(); //创建事件组
+//--------------------初始化阶段--------------------
 
     ESP_ERROR_CHECK(esp_netif_init()); //初始化底层TCP/IP栈
-
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    ESP_ERROR_CHECK(esp_event_loop_create_default()); //创建系统事件任务
+    //创建有 TCP/IP 堆栈的默认网络接口实例绑定Staton和AP
     esp_netif_create_default_wifi_sta();
+    esp_netif_create_default_wifi_ap();
+    //初始化 Wi-Fi 驱动程序
+    wifi_init_config_t wifi_init_config = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&wifi_init_config));
 
-    wifi_init_config_t wifi_config = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&wifi_config));
+//--------------------配置事件组--------------------
 
+    wifi_event_group = xEventGroupCreate(); //创建事件组
     esp_event_handler_instance_t instance_any_id;
     esp_event_handler_instance_t instance_got_ip;
 
@@ -93,23 +105,34 @@ void WIFI_INIT_STA(void)
                                                         NULL,
                                                         &instance_got_ip));
 
-    wifi_config_t wifi_config = {
-        .sta = {
-            .ssid = WIFI_SSID,
-            .password = WIFI_PASSWD,
-            .threshold.authmode = ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD,
-            .sae_pwe_h2e = ESP_WIFI_SAE_MODE,
-            .sae_h2e_identifier = EXAMPLE_H2E_IDENTIFIER,
-        },
-    };
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) ); //设置WIFI为Station模式
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config) ); //配置WIFI
+    ESP_LOGI(TAG, "WIFI_INIT finished.");
+
+    
+}
+
+void WIFI_AP_START()
+{
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP) ); //设置WIFI为Station模式
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config_ap) ); //配置WIFI
     ESP_ERROR_CHECK(esp_wifi_start() ); //启动WIFI
+    ESP_LOGI(TAG, "WIFI AP started.");
+}
 
-    ESP_LOGI(TAG, "WIFI_INIT_STA finished.");
+void WIFI_AP_STOP()
+{
+    esp_wifi_stop();
+    ESP_LOGI(TAG, "WIFI AP stopped.");
+}
 
-    //等待wifi事件组传来连接成功或连接失败的消息
-    EventBits_t bits = xEventGroupWaitBits(wifi_event_group,
+void WIFI_STA_START()
+{
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) ); //设置WIFI为Station模式
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config_sta) ); //配置WIFI
+    ESP_ERROR_CHECK(esp_wifi_start() ); //启动WIFI
+    ESP_LOGI(TAG, "WIFI STA started.");
+
+        //等待wifi事件组传来连接成功或连接失败的消息
+        EventBits_t bits = xEventGroupWaitBits(wifi_event_group,
             WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
             pdFALSE,
             pdFALSE,
@@ -128,3 +151,18 @@ void WIFI_INIT_STA(void)
     }
 }
 
+void WIFI_STA_STOP()
+{
+    esp_wifi_disconnect();
+    esp_wifi_stop();
+}
+
+void NVS_INIT()
+{
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+      ESP_ERROR_CHECK(nvs_flash_erase());
+      ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+}
