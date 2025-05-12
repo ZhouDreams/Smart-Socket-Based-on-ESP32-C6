@@ -10,7 +10,6 @@
 
 #include "freertos/FreeRTOS.h"
 #include "driver/uart.h"
-#include "wifi.h"
 #include "esp_netif.h"
 #include "esp_wifi.h"
 
@@ -34,6 +33,9 @@ extern uart_config_t uart_config_BL0942;
 #define GPIO3_PIN 6 //按钮
 #define GPIO_RELAY_NUM GPIO_NUM_2
 #define GPIO_BUTTON_NUM GPIO_NUM_3
+#define GPIO_WIFI_NUM GPIO_NUM_18
+#define LED_ON 1
+#define LED_OFF 0
 
 //----------Interruption related----------
 extern QueueHandle_t uart0_event_queue; //UART0串口中断队列句柄
@@ -41,8 +43,8 @@ extern QueueHandle_t uart1_event_queue; //UART1串口中断队列句柄
 extern QueueHandle_t relay_event_queue; //继电器事件队列句柄
 
 //----------Relay related----------
-#define RELAY_ON 0
-#define RELAY_OFF 1
+#define RELAY_ON 1
+#define RELAY_OFF 0
 
 typedef enum{
     FROM_BUTTON = 0,
