@@ -15,6 +15,7 @@
 
 void RELAY_GPIO2_INST()
 {
+    gpio_reset_pin(GPIO_RELAY_NUM);
     gpio_set_direction(GPIO_RELAY_NUM, GPIO_MODE_OUTPUT);
     gpio_set_level(GPIO_RELAY_NUM, RELAY_OFF);
     ESP_LOGI(TAG, "Relay has been installed.");
