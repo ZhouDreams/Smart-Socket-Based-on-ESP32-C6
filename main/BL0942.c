@@ -30,7 +30,7 @@ void BL0942_READ_TASK()
     uint32_t a_rms_raw = 0;
     uint32_t p_rms_raw = 0;
     float voltage_AC_IN = 0;
-    float current_OUT1 = 0;
+    float current_OUT = 0;
 
     while(1)
     {
@@ -64,11 +64,12 @@ void BL0942_READ_TASK()
         }
 
         v_rms_raw= (response[6] << 16) | (response[5] << 8) | response[4]; 
-        voltage_AC_IN = (v_rms_raw * 1.218*3.824) / 73989;//3.824=（R1+R2）/R1*1000
+        voltage_AC_IN = (v_rms_raw * 1.218*( 390*5 + 0.51 )) / (73989*0.51*1000);//3.824=（R1+R2）/R1*1000
         a_rms_raw= (response[3] << 16) | (response[2] << 8) | response[1]; 
-        current_OUT1 =  (a_rms_raw * 1.218) / 305978;
-        current_OUT1 = current_OUT1/1.65;
-        ESP_LOGI(TAG, "Voltage: %0.1f, Current: %0.1f",voltage_AC_IN, current_OUT1);
+        current_OUT =  (a_rms_raw * 1.218 ) / (305978/(0.001*1000));
+
+        //ESP_LOGI(TAG, "v_rms_raw: %lu, a_rms_raw: %lu",v_rms_raw, a_rms_raw);
+        ESP_LOGI(TAG, "Voltage: %0.1fV, Current: %0.1fA",voltage_AC_IN, current_OUT);
 
 
         vTaskDelay(pdMS_TO_TICKS(2000));
