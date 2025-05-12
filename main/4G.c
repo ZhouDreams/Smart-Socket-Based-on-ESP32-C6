@@ -32,6 +32,7 @@ void AIR780EP_INST()
     {
     //重启模块
         strcpy(response, SEND_AT_CMD(AT_RESET, 3000)); 
+        printf("Response: %s\n",response);
         if( strstr(response, "OK") == NULL) continue;
         ESP_LOGI(TAG, "The module has been reset.");
         
@@ -41,7 +42,7 @@ void AIR780EP_INST()
         
         if( strstr(response, "READY") == NULL)
         {
-            ESP_LOGI(TAG, "Bad SIM Card Status! return");
+            ESP_LOGE(TAG, "Bad SIM Card Status! return");
             continue;
         }
         ESP_LOGI(TAG, "SIM Card is ready.");
@@ -58,7 +59,7 @@ void AIR780EP_INST()
         if( csq > 18 ) ESP_LOGI(TAG, "CSQ is %d, the GSM signal strength is strong.",csq);
         else if( csq > 9 ) ESP_LOGI(TAG, "CSQ is %d, the GSM signal strength is moderate.",csq);
         else{
-            ESP_LOGI(TAG, "CSQ is %d, the GSM signal strength is too weak! return.",csq);
+            ESP_LOGE(TAG, "CSQ is %d, the GSM signal strength is too weak! return.",csq);
             continue;
         }
 
@@ -67,7 +68,7 @@ void AIR780EP_INST()
         data_pointer = strstr(response, "+CGATT: ") + 8; //思路同上
         if( *data_pointer == '1') ESP_LOGI(TAG, "The network registration is successful.");
         else{
-            ESP_LOGI(TAG, "The network registration is not successful! return.");
+            ESP_LOGE(TAG, "The network registration is not successful! return.");
             continue;
         }
 
