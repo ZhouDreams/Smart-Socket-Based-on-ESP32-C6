@@ -11,7 +11,6 @@
 #include "driver/gpio.h"
 #include "esp_wifi.h"
 #include "config.h"
-#include "wifi.h"
 
 #define TAG "config.c"
 
