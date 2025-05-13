@@ -65,7 +65,7 @@ void MQTT_POWER_UPDATE_TASK()
     while(1)
     {
         char data[10]="\0";
-        sprintf(data, "%0.1f", BL0942_POWER);
+        sprintf(data, "%0.1fW", BL0942_POWER);
         int msg_id = esp_mqtt_client_publish(client_now, "/topic/power", data, 0, 1, 0);
         ESP_LOGI(TAG, "Power message published, msg_id=%d, Power = %s", msg_id, data);
 
@@ -111,6 +111,10 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         ESP_LOGI(TAG, "MQTT_EVENT_DATA");
         printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
         printf("DATA=%.*s\r\n", event->data_len, event->data);
+        if( strstr(event->topic, "/topic/relay_status") != NULL){
+            RELAY_CHANGE_SOURCE change = FROM_INTERNET;
+            xQueueSendFromISR(relay_event_queue, &change, NULL);
+        }
         break;
     case MQTT_EVENT_ERROR:
         ESP_LOGI(TAG, "MQTT_EVENT_ERROR");
