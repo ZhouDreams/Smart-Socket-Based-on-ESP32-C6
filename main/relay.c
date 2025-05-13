@@ -43,8 +43,10 @@ void RELAY_TASK()
         {
             uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS; //当前的上电以来经历的毫秒数
 
-            if( (change == FROM_BUTTON && (now - last_event_time) > 200) || change == FROM_INTERNET ) {
-                //如果是按钮改变继电器状态就要间隔200ms，避免机械按钮的电平不稳定
+            if( ( now - last_event_time) > 200 ) {
+                //两次继电器开关切换之间要间隔200ms，无论是按钮切换还是网络切换
+                //对于按钮切换，可以防止机械按钮电平不稳
+                //对于网络切换，因为MQTT在对订阅过的主题发送信息时，自己也会受到一模一样的信息，防止无限套娃
                 last_event_time = now; //记录该次触发时间
 
                 CURRENT_STATUS = !CURRENT_STATUS; //状态翻转
