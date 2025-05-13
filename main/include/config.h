@@ -67,5 +67,10 @@ typedef enum{
 #define AT_MSUB_RELAY "AT+MSUB=\"smartsocket/relay_status\",0\r\n"
 #define AT_PING "AT+CIPPING=\"117.72.37.56\"\r\n"
 
+#define MQTT_URI "mqtt://mqtt.jovisdreams.site:1883"
+#define MQTT_CLIENT_ID "ESP32-C6"
+#define MQTT_USERNAME "zhoudreams"
+#define MQTT_PASSWD "sbzjx250"
+
 
 #endif
