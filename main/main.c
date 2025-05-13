@@ -12,10 +12,14 @@
 #include "driver/gpio.h"
 #include "driver/uart.h"
 #include "esp_log.h"
+#include "nvs_flash.h"
 #include "4G.h"
 #include "BL0942.h"
 #include "button.h"
 #include "relay.h"
+#include "http_server.h"
+#include "wifi_manager.h"
+#include "mqtt.h"
 #include "config.h"
 
 #define TAG "main.c"
@@ -55,12 +59,34 @@ void setup()
     UART_4G_INST();
     xTaskCreate(AIR780EP_INST, "AIR780EP_INST", 4096, NULL, 1, NULL);
     
+//----------初始化WIFI----------
+    WIFI_GPIO18_INIT();
 
-    
+    // 初始化NVS
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
 
-    // xTaskCreate(UART1_EVENT_TASK, "uart1_event_task", 4096, NULL, 10, NULL);
+    // 初始化SPIFFS
+    ESP_ERROR_CHECK(init_spiffs());
 
-    // MQTT_INST();
+    ESP_LOGI(TAG, "Starting WiFi in AP mode");
+    ESP_ERROR_CHECK(wifi_init_softap());
+
+    start_webserver();
+
+//----------初始化MQTT----------
+    for(int i=1;i<=10;i++)
+    {
+        ESP_LOGI(TAG, "MQTT INIT Delay: %d seconds", 11-i);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+    MQTT_WIFI_INIT();
+
+
 
     ESP_LOGI(TAG, "Setup() returns.");
 
@@ -70,10 +96,9 @@ void app_main()
 {
     setup();
 
-
-
     //relay_test();
 
     ESP_LOGI(TAG, "app_main() returns.");
 
 }
+
