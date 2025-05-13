@@ -19,6 +19,8 @@
 
 #define BL0942_WRITE_CMD 0b10101000
 
+extern float BL0942_POWER;
+
 void UART_BL0942_INST(); //BL0942 UART初始化
 void BL0942_READ_TASK();
 

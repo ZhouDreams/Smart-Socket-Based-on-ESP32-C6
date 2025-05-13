@@ -6,6 +6,7 @@
 */
 
 #include "freertos/FreeRTOS.h"
+#include <math.h>
 #include "driver/uart.h"
 #include <string.h>
 #include <stdbool.h>
@@ -14,6 +15,8 @@
 #include "config.h"
 
 #define TAG "BL0942.c"
+
+float BL0942_POWER = 0;
 
 void UART_BL0942_INST()
 {
@@ -68,11 +71,13 @@ void BL0942_READ_TASK()
         a_rms_raw= (response[3] << 16) | (response[2] << 8) | response[1]; 
         current_OUT =  (a_rms_raw * 1.218 ) / (305978/(0.001*1000));
 
-        //ESP_LOGI(TAG, "v_rms_raw: %lu, a_rms_raw: %lu",v_rms_raw, a_rms_raw);
-        ESP_LOGI(TAG, "Voltage: %0.1fV, Current: %0.1fA",voltage_AC_IN, current_OUT);
+        voltage_AC_IN = roundf(voltage_AC_IN*100)/100;
+        current_OUT = roundf(current_OUT*100)/100;
+        BL0942_POWER = voltage_AC_IN * current_OUT;
+        ESP_LOGI(TAG, "Voltage: %0.1fV, Current: %0.1fA, Power: %0.1fW",voltage_AC_IN, current_OUT, BL0942_POWER);
+        
 
-
-        vTaskDelay(pdMS_TO_TICKS(2000));
+        vTaskDelay(pdMS_TO_TICKS(1000));
 
     } 
 

@@ -8,6 +8,8 @@
 #ifndef __RELAY_H__
 #define __RELAY_H__
 
+extern int RELAY_CURRENT_LEVEL;
+
 void RELAY_GPIO2_INST(); //继电器GPIO2初始化
 void RELAY_SET_LEVEL(int level);
 void MQTT_SWITCH_RELAY();

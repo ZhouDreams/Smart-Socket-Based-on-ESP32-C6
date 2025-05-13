@@ -8,10 +8,13 @@
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "esp_log.h"
+#include "mqtt.h"
 #include "relay.h"
 #include "config.h"
 
 #define TAG "relay.c"
+
+int RELAY_CURRENT_LEVEL = RELAY_OFF;
 
 void RELAY_GPIO2_INST()
 {
@@ -46,8 +49,8 @@ void RELAY_TASK()
 
                 CURRENT_STATUS = !CURRENT_STATUS; //状态翻转
                 RELAY_SET_LEVEL(CURRENT_STATUS); //设置继电器新状态
-
-                //RELAY_STATUS_UPDATE(CURRENT_STATUS); //更新云端继电器状态
+                RELAY_CURRENT_LEVEL = CURRENT_STATUS;
+                MQTT_RELAY_STATUS_UPDATE(RELAY_CURRENT_LEVEL);
 
                 if(change == FROM_BUTTON) ESP_LOGI(TAG, "Relay switched from button!");
                 else ESP_LOGI(TAG, "Relay switched change from Internet!");
