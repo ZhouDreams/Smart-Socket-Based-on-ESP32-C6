@@ -14,8 +14,7 @@
 
 #define TAG "relay.c"
 
-int RELAY_CURRENT_LEVEL = RELAY_OFF;
-
+//继电器GPIO2初始化
 void RELAY_GPIO2_INST()
 {
     gpio_reset_pin(GPIO_RELAY_NUM);
@@ -24,17 +23,19 @@ void RELAY_GPIO2_INST()
     ESP_LOGI(TAG, "Relay has been installed.");
 }
 
+//设置继电器开关
 void RELAY_SET_LEVEL(int level)
 {
     gpio_set_level(GPIO_RELAY_NUM, level);
 }
 
+//继电器任务
 void RELAY_TASK()
 {
     ESP_LOGI(TAG, "RELAY_TASK has been started.");
 
     RELAY_CHANGE_SOURCE change;
-    int CURRENT_STATUS = RELAY_OFF;
+    RELAY_STATUS_FLAG = 0;
     uint32_t last_event_time = 0;
 
     while(1)
@@ -43,35 +44,24 @@ void RELAY_TASK()
         {
             uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS; //当前的上电以来经历的毫秒数
 
-            if( ( now - last_event_time) > 200 ) {
-                //两次继电器开关切换之间要间隔200ms，无论是按钮切换还是网络切换
+            if( ( now - last_event_time) > 300 ) {
+                //当按钮切换时，两次继电器开关切换之间要间隔300ms，无论是按钮切换还是网络切换
                 //对于按钮切换，可以防止机械按钮电平不稳
-                //对于网络切换，因为MQTT在对订阅过的主题发送信息时，自己也会受到一模一样的信息，防止无限套娃
+                //对于网络切换，可以防止网络端切换的时候正好碰上MQTT上报，导致开关瞬间开合
                 last_event_time = now; //记录该次触发时间
 
-                CURRENT_STATUS = !CURRENT_STATUS; //状态翻转
-                RELAY_SET_LEVEL(CURRENT_STATUS); //设置继电器新状态
-                RELAY_CURRENT_LEVEL = CURRENT_STATUS;
-                MQTT_RELAY_STATUS_UPDATE(RELAY_CURRENT_LEVEL);
+                RELAY_STATUS_FLAG = !RELAY_STATUS_FLAG; //状态翻转
+                RELAY_SET_LEVEL(RELAY_STATUS_FLAG); //设置继电器新状态
+                
+                if(MQTT_WIFI_CONNECTED_FLAG == 1) 
+                    MQTT_RELAY_STATUS_UPDATE(RELAY_STATUS_FLAG);
 
                 if(change == FROM_BUTTON) ESP_LOGI(TAG, "Relay switched from button!");
                 else ESP_LOGI(TAG, "Relay switched change from Internet!");
-                if(CURRENT_STATUS == RELAY_OFF) ESP_LOGI(TAG, "Current Relay level: ON -> OFF");
+                if(RELAY_STATUS_FLAG == RELAY_OFF) ESP_LOGI(TAG, "Current Relay level: ON -> OFF");
                 else ESP_LOGI(TAG, "Current Relay level: OFF -> ON");
             }
         }
     }
 }
 
-void relay_test()
-{
-    for(int i=1;i<=300;i++)
-    {
-        gpio_set_level(GPIO_RELAY_NUM, RELAY_ON);
-        ESP_LOGI(TAG, "Relay has been switched to ON.");
-        vTaskDelay(pdMS_TO_TICKS(2000));
-        gpio_set_level(GPIO_RELAY_NUM, RELAY_OFF);
-        ESP_LOGI(TAG, "Relay has been switched to OFF.");
-        vTaskDelay(pdMS_TO_TICKS(2000));
-    }
-}
