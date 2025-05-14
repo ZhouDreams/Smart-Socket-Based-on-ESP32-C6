@@ -17,31 +17,10 @@
 #include "esp_netif.h"
 #include "BL0942.h"
 #include "relay.h"
+#include "4G.h"
 #include "config.h"
 
 #define TAG "mqtt.c"
-
-void MQTT_4G_INST()
-{
-    ESP_LOGI(TAG, "Initializing MQTT...");
-
-    uart_flush(UART_4G_NUM);
-
-    // SEND_AT_CMD(AT_RESET);
-    // vTaskDelay(pdMS_TO_TICKS(1000));
-
-    // SEND_AT_CMD(AT_CPIN);
-    // SEND_AT_CMD(AT_CGATT);
-    // SEND_AT_CMD(AT_MCONFIG);
-    // SEND_AT_CMD(AT_MIPSTART);
-    // SEND_AT_CMD(AT_MCONNECT);
-    // SEND_AT_CMD(AT_MSUB_RELAY);
-
-    // RELAY_STATUS_UPDATE(RELAY_OFF); //上电后继电器初始为断开
-
-    ESP_LOGI(TAG, "MQTT inst Complete!\n");
-
-}
 
 static void log_error_if_nonzero(const char *message, int error_code)
 {
@@ -50,7 +29,7 @@ static void log_error_if_nonzero(const char *message, int error_code)
     }
 }
 
-esp_mqtt_client_handle_t client_now;
+esp_mqtt_client_handle_t client_now; //当前MQTT客户端句柄
 
 void MQTT_RELAY_STATUS_UPDATE(int level)
 {
@@ -60,16 +39,89 @@ void MQTT_RELAY_STATUS_UPDATE(int level)
     ESP_LOGI(TAG, "relay_status message published, msg_id=%d, relay = %s", msg_id, data);
 }
 
-void MQTT_POWER_UPDATE_TASK()
+void MQTT_UPDATE_DAEMON()
+//MQTT周期上报任务
 {    
+    ESP_LOGI(TAG, "MQTT_UPDATE_DAEMON() Started.");
     while(1)
     {
-        char data[10]="\0";
-        sprintf(data, "%0.1fW", BL0942_POWER);
-        int msg_id = esp_mqtt_client_publish(client_now, "/topic/power", data, 0, 1, 0);
-        ESP_LOGI(TAG, "Power message published, msg_id=%d, Power = %s", msg_id, data);
+        if(MQTT_WIFI_CONNECTED_FLAG == 1)
+        //如果通过WIFI连接的MQTT初始化完成，则通过WIFI上报MQTT服务器
+        {
+            int msg_id;
+            
+            char power[10]="\0";
+            sprintf(power, "%0.1fW", BL0942_POWER);
+            msg_id = esp_mqtt_client_publish(client_now, "/topic/power", power, 0, 1, 0);
+            //ESP_LOGI(TAG, "Power message published, msg_id=%d, Power = %s", msg_id, data);
 
-        vTaskDelay(pdMS_TO_TICKS(2000));
+            char relay_status[3]="\0";
+            sprintf(relay_status, "%d", RELAY_STATUS_FLAG);
+            msg_id = esp_mqtt_client_publish(client_now, "/topic/relay_status", relay_status, 0, 1, 0);
+            //ESP_LOGI(TAG, "Relay_status message published, msg_id=%d, relay_status = %s", msg_id, data);
+
+            char network[6]="Wi-Fi";
+            msg_id = esp_mqtt_client_publish(client_now, "/topic/network", network, 0, 1, 0);
+
+            char power_thresh[10];
+            sprintf(power_thresh, "%d", POWER_THRESH);
+            msg_id = esp_mqtt_client_publish(client_now, "/topic/power_thresh", power_thresh, 0, 1, 0);
+
+            ESP_LOGI(TAG, "MQTT Updated through WIFI.");
+            ESP_LOGI(TAG, "Power = %s, Relay_Status = %s, Network = %s, power_thresh = %s.",power,relay_status,network,power_thresh);
+        }
+
+        else if(Air780EP_ONLINE_FLAG == 1)
+        //如果MQTT未通过WIFI连接，但4G模块在线，则通过4G上报MQTT服务器
+        {
+            ESP_LOGW(TAG, "WIFI disconnected, MQTT Updating through 4G.");
+            char cmd[50];
+            char response[BUF_SIZE] = "\0";
+
+            //检查缓存里有没有订阅信息
+            sprintf(cmd, "AT+MQTTMSGGET\r\n");
+            memset(response,0,sizeof(response));
+            strcpy(response, SEND_AT_CMD_NO_PRINT(cmd, AT_RESPONSE_DELAY));
+            if(strstr(response, "+MSUB: \"/topic/relay_status_ctrl\",1 byte,1") != NULL)
+            {
+                RELAY_CHANGE_SOURCE change = FROM_INTERNET;
+                xQueueSendFromISR(relay_event_queue, &change, NULL);
+            }
+
+            //上报功耗信息
+            char power[10]="\0";
+            sprintf(power, "%0.1fW", BL0942_POWER);
+            sprintf(cmd, "AT+MPUB=\"/topic/power\",0,0,\"%s\"\r\n",power);
+            memset(response,0,sizeof(response));
+            strcpy(response, SEND_AT_CMD_NO_PRINT(cmd, AT_RESPONSE_DELAY));
+            if(strstr(response,"OK") != NULL) ESP_LOGI(TAG, "Power = %s updated.", power);
+            else ESP_LOGI(TAG, "Power update failed!");
+
+            //上报继电器状态
+            char relay_status[3]="\0";
+            sprintf(relay_status, "%d", RELAY_STATUS_FLAG);
+            sprintf(cmd, "AT+MPUB=\"/topic/relay_status\",0,0,\"%s\"\r\n",relay_status);
+            memset(response,0,sizeof(response));
+            strcpy(response, SEND_AT_CMD_NO_PRINT(cmd, AT_RESPONSE_DELAY));
+            if(strstr(response,"OK") != NULL) ESP_LOGI(TAG, "Relay status = %s updated.", relay_status);
+            else ESP_LOGI(TAG, "Relay status update failed!");
+
+            //上报当前网络
+            char network[3]="4G";
+            sprintf(cmd, "AT+MPUB=\"/topic/network\",0,0,\"%s\"\r\n",network);
+            memset(response,0,sizeof(response));
+            strcpy(response, SEND_AT_CMD_NO_PRINT(cmd, AT_RESPONSE_DELAY));
+            if(strstr(response,"OK") != NULL) ESP_LOGI(TAG, "Network = %s updated.", network);
+            else ESP_LOGI(TAG, "Network update failed!");
+
+        }
+        else
+        //如果WIFI和4G都不通，那就寄了
+        {
+            ESP_LOGE(TAG, "WIFI and 4G both disconnected, MQTT update failed!");
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
 
@@ -80,44 +132,54 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     esp_mqtt_client_handle_t client = event->client;
     client_now = client;
     int msg_id;
+
     switch ((esp_mqtt_event_id_t)event_id) {
     case MQTT_EVENT_CONNECTED:
-
-        msg_id = esp_mqtt_client_subscribe(client_now, "/topic/relay_status", 0);
+        MQTT_WIFI_CONNECTED_FLAG = 1;
+        ESP_LOGW(TAG, "MQTT_EVENT_CONNECTED");
+        
+        msg_id = esp_mqtt_client_subscribe(client_now, "/topic/relay_status_ctrl", 0);
         ESP_LOGI(TAG, "Subscribed topic relay_status, msg_id=%d", msg_id);
-        msg_id = esp_mqtt_client_subscribe(client_now, "/topic/power", 0);
-        ESP_LOGI(TAG, "Subscribed topic power, msg_id=%d", msg_id);
 
-        MQTT_RELAY_STATUS_UPDATE(RELAY_CURRENT_LEVEL);
-        xTaskCreate(MQTT_POWER_UPDATE_TASK, "MQTT_POWER_UPDATE_TASK", 4096, NULL, 2, NULL);
+        MQTT_RELAY_STATUS_UPDATE(RELAY_STATUS_FLAG);
+        
         break;
 
     case MQTT_EVENT_DISCONNECTED:
-        ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
+        MQTT_WIFI_CONNECTED_FLAG = 0;
+        ESP_LOGW(TAG, "MQTT_EVENT_DISCONNECTED");
         break;
 
     case MQTT_EVENT_SUBSCRIBED:
-        ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
+        ESP_LOGW(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
         msg_id = esp_mqtt_client_publish(client, "/topic/qos0", "data", 0, 0, 0);
         ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
         break;
+
     case MQTT_EVENT_UNSUBSCRIBED:
-        ESP_LOGI(TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
+        ESP_LOGW(TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
         break;
+
     case MQTT_EVENT_PUBLISHED:
-        ESP_LOGI(TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
+        //ESP_LOGW(TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
         break;
+
     case MQTT_EVENT_DATA:
-        ESP_LOGI(TAG, "MQTT_EVENT_DATA");
-        printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
-        printf("DATA=%.*s\r\n", event->data_len, event->data);
-        if( strstr(event->topic, "/topic/relay_status") != NULL){
+        // ESP_LOGW(TAG, "MQTT_EVENT_DATA");
+        // printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
+        // printf("DATA=%.*s\r\n", event->data_len, event->data);
+        if( strstr(event->topic, "/topic/relay_status_ctrl") != NULL){
+
             RELAY_CHANGE_SOURCE change = FROM_INTERNET;
             xQueueSendFromISR(relay_event_queue, &change, NULL);
         }
+        else if( strstr(event->topic, "/topic/power_thresh") != NULL){
+            
+        }
         break;
     case MQTT_EVENT_ERROR:
-        ESP_LOGI(TAG, "MQTT_EVENT_ERROR");
+        ESP_LOGW(TAG, "MQTT_EVENT_ERROR");
+        MQTT_WIFI_CONNECTED_FLAG = 0;
         if (event->error_handle->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT) {
             log_error_if_nonzero("reported from esp-tls", event->error_handle->esp_tls_last_esp_err);
             log_error_if_nonzero("reported from tls stack", event->error_handle->esp_tls_stack_err);
@@ -127,7 +189,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         }
         break;
     default:
-        ESP_LOGI(TAG, "Other event id:%d", event->event_id);
+        ESP_LOGW(TAG, "Other event id:%d", event->event_id);
         break;
     }
 }
@@ -138,7 +200,12 @@ void MQTT_WIFI_INIT()
         .broker.address.uri = MQTT_URI,
         .credentials.client_id = MQTT_CLIENT_ID,
         .credentials.username = MQTT_USERNAME,
-        .credentials.authentication.password = MQTT_PASSWD
+        .credentials.authentication.password = MQTT_PASSWD,
+        .network.disable_auto_reconnect = false,
+        .network.reconnect_timeout_ms = 5000,
+        .session.keepalive = 120,
+        .broker.verification.skip_cert_common_name_check = true
+
     };
 
     esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_cfg);
