@@ -13,6 +13,13 @@
 #include "esp_netif.h"
 #include "esp_wifi.h"
 
+//----------FLAGS----------
+extern int Air780EP_ONLINE_FLAG;
+extern int WIFI_CONNECTED_FLAG;
+extern int MQTT_WIFI_CONNECTED_FLAG;
+extern int RELAY_STATUS_FLAG;
+extern int AT_CMD_SENDING_FLAG;
+
 //----------UART related----------
 #define UART_4G_NUM UART_NUM_1
 #define UART_4G_BAUD_RATE 115200
@@ -38,8 +45,8 @@ extern uart_config_t uart_config_BL0942;
 #define LED_OFF 0
 
 //----------Interruption related----------
-extern QueueHandle_t uart0_event_queue; //UART0串口中断队列句柄
-extern QueueHandle_t uart1_event_queue; //UART1串口中断队列句柄
+
+extern QueueHandle_t uart_4G_event_queue;  //UART1串口中断队列句柄
 extern QueueHandle_t relay_event_queue; //继电器事件队列句柄
 
 //----------Relay related----------
@@ -51,24 +58,12 @@ typedef enum{
     FROM_INTERNET = 1
 } RELAY_CHANGE_SOURCE;  //继电器状态改变时的事件来源类型
 
-//----------Button related----------
-
-
 //----------WIFI related----------
 
 
 //----------MQTT related----------
-#define AT_MCONFIG "AT+MCONFIG=\"socket-0\",\"zhoudreams\",\"sbzjx250\"\r\n" //设置 MQTT 相关参数
-#define AT_MIPSTART "AT+MIPSTART=\"mqtt.jovisdreams.site\",1883\r\n" //建立 TCP 连接
-#define AT_MCONNECT "AT+MCONNECT=0,300\r\n" //客户端向服务器请求会话连接
-#define AT_MPUB "AT+MPUB=\"smartsocket\",0,0,\"{\\0A\\22Relay_Status\\22: 1,\\0A\\22Power\\22: 2349\\0A}\"\r\n" //发布消息
-#define AT_MPUB_RELAY_ON "AT+MPUB=\"smartsocket/relay_status\",0,0,0\r\n"
-#define AT_MPUB_RELAY_OFF "AT+MPUB=\"smartsocket/relay_status\",0,0,1\r\n"
-#define AT_MSUB_RELAY "AT+MSUB=\"smartsocket/relay_status\",0\r\n"
-#define AT_PING "AT+CIPPING=\"117.72.37.56\"\r\n"
-
-#define MQTT_URI "mqtt://mqtt.jovisdreams.site:1883"
-#define MQTT_CLIENT_ID "ESP32-C6"
+#define MQTT_URI "mqtt://mqtt.jovisdreams.site"
+#define MQTT_CLIENT_ID "Smart_Socket_WIFI"
 #define MQTT_USERNAME "zhoudreams"
 #define MQTT_PASSWD "sbzjx250"
 
