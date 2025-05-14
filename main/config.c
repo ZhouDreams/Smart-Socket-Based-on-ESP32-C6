@@ -14,6 +14,11 @@
 
 #define TAG "config.c"
 
+int Air780EP_ONLINE_FLAG = 0;
+int WIFI_CONNECTED_FLAG = 0;
+int MQTT_WIFI_CONNECTED_FLAG = 0;
+int RELAY_STATUS_FLAG = 0;
+
 uart_config_t uart_config_4G = {
     .baud_rate = UART_4G_BAUD_RATE,
     .data_bits = UART_DATA_8_BITS,
