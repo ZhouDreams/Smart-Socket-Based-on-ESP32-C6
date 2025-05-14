@@ -24,24 +24,11 @@
 
 #define TAG "main.c"
 
-
-SYNC_DATA_t DATA_TEST={
-    .relay_status = 1,
-    .battery_or_dc = 0,
-    .battery_voltage_percent = 72,
-    .power_thresh = 999,
-    .power = 25.6,
-    .WIFI_or_4G = 0
-  
-};
-
 QueueHandle_t relay_event_queue = NULL; 
-QueueHandle_t uart0_event_queue = NULL; 
-QueueHandle_t uart1_event_queue = NULL; 
 
 void setup()
 {
-    ESP_LOGI(TAG, "Enter setup.");
+    ESP_LOGI(TAG, "Enter setup().");
 
 //----------初始化继电器和按钮----------
     RELAY_GPIO2_INST();
@@ -54,13 +41,9 @@ void setup()
 //----------初始化BL0942计量模块----------
     UART_BL0942_INST();
     xTaskCreate(BL0942_READ_TASK, "BL0942_READ_TASK", 4096, NULL, 2, NULL); //启动从BL0942周期读取电量数据的任务
-
-//----------初始化4G模块----------
-    UART_4G_INST();
-    xTaskCreate(AIR780EP_INST, "AIR780EP_INST", 4096, NULL, 1, NULL);
     
 //----------初始化WIFI----------
-    WIFI_GPIO18_INIT();
+    WIFI_GPIO18_INIT(); //初始化WIFI连接状态指示灯
 
     // 初始化NVS
     esp_err_t ret = nvs_flash_init();
@@ -78,13 +61,26 @@ void setup()
 
     start_webserver();
 
+//----------初始化4G模块----------
+    UART_4G_INST();
+    
+    xTaskCreate(AIR780EP_INST, "AIR780EP_INST", 4096, NULL, 1, NULL);
+
 //----------初始化MQTT----------
-    for(int i=1;i<=10;i++)
+    while (1)
     {
-        ESP_LOGI(TAG, "MQTT INIT Delay: %d seconds", 11-i);
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        //等待WIFI和4G其中任一连上MQTT服务器
+        if(WIFI_CONNECTED_FLAG == 1 || Air780EP_ONLINE_FLAG == 1)
+        {
+            MQTT_WIFI_INIT();
+            break;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(500));
     }
-    MQTT_WIFI_INIT();
+    
+    xTaskCreate(MQTT_UPDATE_DAEMON, "MQTT_UPDATE_DAEMON", 4096, NULL, 2, NULL);
+    
 
 
 
@@ -96,7 +92,6 @@ void app_main()
 {
     setup();
 
-    //relay_test();
 
     ESP_LOGI(TAG, "app_main() returns.");
 
