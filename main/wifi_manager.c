@@ -10,6 +10,7 @@
 #include "lwip/err.h"
 #include "lwip/sys.h"
 #include "wifi_manager.h"
+#include "mqtt.h"
 #include "config.h"
 
 // WiFi配置参数
@@ -41,23 +42,29 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                 ESP_LOGI(TAG, "设备 "MACSTR" 已连接, AID=%d",
                          MAC2STR(ap_event->mac), ap_event->aid);
                 break;
+
             case WIFI_EVENT_AP_STADISCONNECTED:
                 wifi_event_ap_stadisconnected_t* ap_disc_event = (wifi_event_ap_stadisconnected_t*) event_data;
                 ESP_LOGI(TAG, "设备 "MACSTR" 已断开连接, AID=%d",
                          MAC2STR(ap_disc_event->mac), ap_disc_event->aid);
                 break;
+
             case WIFI_EVENT_STA_START:
                 ESP_LOGI(TAG, "WIFI_EVENT_STA_START，尝试连接到AP...");
                 esp_wifi_connect();
                 break;
+
             case WIFI_EVENT_STA_CONNECTED:
                 ESP_LOGI(TAG, "WIFI_EVENT_STA_CONNECTED，已连接到AP");
                 s_retry_num = 0; // 重置重试计数
+                WIFI_CONNECTED_FLAG = 1;
                 gpio_set_level(GPIO_WIFI_NUM, LED_ON); //亮灯
                 break;
+
             case WIFI_EVENT_STA_DISCONNECTED:
                 wifi_event_sta_disconnected_t* event = (wifi_event_sta_disconnected_t*) event_data;
                 ESP_LOGW(TAG, "WiFi断开连接，原因:%d", event->reason);
+                WIFI_CONNECTED_FLAG = 0;
                 gpio_set_level(GPIO_WIFI_NUM, LED_OFF); //熄灯
                 if (s_retry_num < MAX_RETRY_COUNT) {
                     ESP_LOGI(TAG, "重试连接到AP... (%d/%d)", s_retry_num + 1, MAX_RETRY_COUNT);
@@ -75,6 +82,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                     }
                 }
                 break;
+                
         }
     } else if (event_base == IP_EVENT) {
         if (event_id == IP_EVENT_STA_GOT_IP) {

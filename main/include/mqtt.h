@@ -5,13 +5,8 @@
     Email: zhoudreamstk@foxmail.com
 */
 
-void MQTT_4G_INST();
-void MQTT_WIFI_INST();
+void MQTT_UPDATE_DAEMON();
 
-void MQTT_RELAY_UPDATE();
-void MQTT_POWER_UPDATE();
-void MQTT_NETTYPE_UPDATE();
+void MQTT_RELAY_STATUS_UPDATE(int level);
 
 void MQTT_WIFI_INIT();
-void MQTT_POWER_UPDATE_TASK();
-void MQTT_RELAY_STATUS_UPDATE(int level);

@@ -15,6 +15,7 @@
 
 #define TAG "button.c"
 
+//按钮GPIO初始化
 void BUTTON_GPIO3_INST()
 {
     gpio_set_direction(GPIO_BUTTON_NUM, GPIO_MODE_INPUT);
@@ -24,6 +25,7 @@ void BUTTON_GPIO3_INST()
     ESP_LOGI(TAG, "Button has been installed.");
 }
 
+//GPIO中断服务函数
 void IRAM_ATTR BUTTON_ISR_HANDLER(void* arg)
 {
     RELAY_CHANGE_SOURCE change = FROM_BUTTON;
