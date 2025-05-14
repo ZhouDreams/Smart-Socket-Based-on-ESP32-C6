@@ -17,26 +17,40 @@
 
 #define TAG "4G.c"
 
+QueueHandle_t uart_4G_event_queue = NULL;
+int AT_CMD_SENDING_FLAG = 0;
+
+//4G模块串口驱动安装
 void UART_4G_INST()
 {
-    ESP_ERROR_CHECK(uart_driver_install(UART_4G_NUM, BUF_SIZE, BUF_SIZE, 10, &uart0_event_queue, 0));
+    ESP_ERROR_CHECK(uart_driver_install(UART_4G_NUM, BUF_SIZE, BUF_SIZE, 10, &uart_4G_event_queue, 0));
     ESP_ERROR_CHECK(uart_param_config(UART_4G_NUM, &uart_config_4G));
     ESP_ERROR_CHECK(uart_set_pin(UART_4G_NUM, UART_4G_TX, UART_4G_RX, -1, -1));
     ESP_LOGI(TAG, "UART_4G has been installed.");
 }
 
+//4G模块初始化
 void AIR780EP_INST()
 {
     char response[BUF_SIZE] = "\0";
     while (1)
     {
+
     //重启模块
+        memset(response,0,sizeof(response));
         strcpy(response, SEND_AT_CMD(AT_RESET, 3000)); 
-        printf("Response: %s\n",response);
+        vTaskDelay(pdMS_TO_TICKS(2000));
         if( strstr(response, "OK") == NULL) continue;
         ESP_LOGI(TAG, "The module has been reset.");
+
+        for(int i=5;i>=1;i--)
+        {
+            ESP_LOGI(TAG, "Starting 4G INIT in %ds...",i);
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
         
     //检查SIM卡状态
+        memset(response,0,sizeof(response));
         strcpy(response, SEND_AT_CMD(AT_CPIN, AT_RESPONSE_DELAY)); 
         char *data_pointer = NULL;
         
@@ -48,6 +62,7 @@ void AIR780EP_INST()
         ESP_LOGI(TAG, "SIM Card is ready.");
 
     //检查信号强度
+        memset(response,0,sizeof(response));
         strcpy(response, SEND_AT_CMD(AT_CSQ, AT_RESPONSE_DELAY)); 
         data_pointer = strstr(response, "+CSQ: ") + 6;
         int csq = *(data_pointer + 1) == ','?(*data_pointer - '0') : (*data_pointer - '0')*10 + (*(data_pointer+1) - '0');
@@ -64,6 +79,7 @@ void AIR780EP_INST()
         }
 
     //查询网络注册情况
+        memset(response,0,sizeof(response));
         strcpy(response, SEND_AT_CMD(AT_CGATT, AT_RESPONSE_DELAY)); 
         data_pointer = strstr(response, "+CGATT: ") + 8; //思路同上
         if( *data_pointer == '1') ESP_LOGI(TAG, "The network registration is successful.");
@@ -73,37 +89,220 @@ void AIR780EP_INST()
         }
 
     //配置数据网络
+        memset(response,0,sizeof(response));
         strcpy(response, SEND_AT_CMD(AT_CSTT, AT_RESPONSE_DELAY)); 
         if( strstr(response, "OK") == NULL) continue;
 
     //激活数据网络
+        memset(response,0,sizeof(response));
         strcpy(response, SEND_AT_CMD(AT_CIICR, AT_RESPONSE_DELAY)); 
         if( strstr(response, "OK") == NULL) continue;
 
     //查询数据网络是否激活成功
+        memset(response,0,sizeof(response));
         strcpy(response, SEND_AT_CMD(AT_CIFSR, AT_RESPONSE_DELAY)); 
         if( strstr(response, "ERROR") != NULL) continue;
+    
+    //设置MQTT相关参数
+        memset(response,0,sizeof(response));
+        strcpy(response, SEND_AT_CMD(AT_MCONFIG, AT_RESPONSE_DELAY));
+        if( strstr(response, "OK") == NULL) continue;
+
+    //设置MQTT订阅消息为缓存模式
+        memset(response,0,sizeof(response));
+        strcpy(response, SEND_AT_CMD(AT_MQTTMSGSET_1, AT_RESPONSE_DELAY));
+        if( strstr(response, "OK") == NULL) continue;
+    
+    //建立TCP连接
+        memset(response,0,sizeof(response));
+        strcpy(response, SEND_AT_CMD(AT_MIPSTART, AT_RESPONSE_DELAY));
+        if( strstr(response, "OK") == NULL) continue;
+    
+    //这里一定要delay一下，否则MCONNECT会在TCP建立连接前就发出，导致会话失败。
+        vTaskDelay(pdMS_TO_TICKS(500)); 
+    
+    //客户端向服务器请求会话连接
+        memset(response,0,sizeof(response));
+        strcpy(response, SEND_AT_CMD(AT_MCONNECT, AT_RESPONSE_DELAY));
+        if( strstr(response, "OK") == NULL) continue;
+    
+    //同理
+        vTaskDelay(pdMS_TO_TICKS(500)); 
+
+    //订阅主题
+        char cmd[50];    
+
+        sprintf(cmd, "AT+MSUB=\"/topic/relay_status_ctrl\",0\r\n");
+        memset(response,0,sizeof(response));
+        strcpy(response, SEND_AT_CMD_NO_PRINT(cmd, AT_RESPONSE_DELAY));
+        if(strstr(response,"OK") != NULL) ESP_LOGI(TAG, "/topic/relay_status_ctrl subscribed.");
+        else
+        {
+            ESP_LOGI(TAG, "topic/relay_status_ctrl subscribe failed!");
+            continue;
+        }
+
+
+        // sprintf(cmd, "AT+MSUB=\"/topic/relay_status\",0\r\n");
+        // memset(response,0,sizeof(response));
+        // strcpy(response, SEND_AT_CMD_NO_PRINT(cmd, AT_RESPONSE_DELAY));
+        // if(strstr(response,"OK") != NULL) ESP_LOGI(TAG, "/topic/relay_status subscribed.");
+        // else
+        // {
+        //     ESP_LOGI(TAG, "topic/relay_status subscribe failed!");
+        //     continue;
+        // }
+
+        // sprintf(cmd, "AT+MSUB=\"/topic/network\",0\r\n");
+        // memset(response,0,sizeof(response));
+        // strcpy(response, SEND_AT_CMD_NO_PRINT(cmd, AT_RESPONSE_DELAY));
+        // if(strstr(response,"OK") != NULL) ESP_LOGI(TAG, "/topic/network subscribed.");
+        // else
+        // {
+        //     ESP_LOGI(TAG, "topic/network subscribe failed!");
+        //     continue;
+        // }
+
+        // sprintf(cmd, "AT+MSUB=\"/topic/power_thresh\",0\r\n");
+        // memset(response,0,sizeof(response));
+        // strcpy(response, SEND_AT_CMD_NO_PRINT(cmd, AT_RESPONSE_DELAY));
+        // if(strstr(response,"OK") != NULL) ESP_LOGI(TAG, "/topic/power_thresh subscribed.");
+        // else
+        // {
+        //     ESP_LOGI(TAG, "topic/power_thresh subscribe failed!");
+        //     continue;
+        // }
 
         break;
     }
 
-    ESP_LOGI(TAG, "Air780EP has been installed.");
+    Air780EP_ONLINE_FLAG = 1;
+    ESP_LOGI(TAG, "MQTT 4G has been activated.");
+    xTaskCreate(AIR780EP_LIVE_DAEMON, "AIR780EP_LIVE_DAEMON", 4096, NULL, 1, NULL);
     vTaskDelete(NULL);
 }
 
+//4G模块保活进程
+void AIR780EP_LIVE_DAEMON()
+{
+    ESP_LOGI(TAG, "AIR780EP_LIVE_DAEMON() Started.");
 
+    while(1)
+    {
+        //如果当前是WIFI上报MQTT，每20秒检查4G是否还活着
+        if(MQTT_WIFI_CONNECTED_FLAG == 1)
+        {
+            ESP_LOGI(TAG, "AIR780EP live daemon working...");
+
+            char response[BUF_SIZE] = "\0";
+            memset(response,0,sizeof(response));
+            strcpy(response, SEND_AT_CMD_NO_PRINT(AT_MQTTSTATU, AT_RESPONSE_DELAY));
+            if(strstr(response,"+MQTTSTATU :1") == NULL)
+            {
+                ESP_LOGE(TAG, "Bad 4G MQTTSTATU!");
+                continue;
+            }
+            else ESP_LOGI(TAG, "Good 4G MQTTSTATU.");
+
+            vTaskDelay(pdMS_TO_TICKS(20000));
+        }
+        else vTaskDelay(pdMS_TO_TICKS(20000));
+        //如果当前是4G上报MQTT,负责接收订阅信息
+        // else if(Air780EP_ONLINE_FLAG == 1)
+        // {
+        //     static char buffer[BUF_SIZE] = "\0";
+        //     memset(buffer,0,sizeof(buffer));
+        //     uart_event_t event;
+        //     int len = 0;
+
+        //     // if(xQueueReceive(uart_4G_event_queue, (void *)&event, (TickType_t)portMAX_DELAY))
+        //     // {
+        //     //     len = uart_read_bytes(UART_4G_NUM, buffer, BUF_SIZE - 1, 10);
+        //     // }
+
+        //     // if(strstr(buffer,"+MSUB: \"/topic/relay_status\",1 byte,") != NULL)
+        //     // {
+        //     //     printf("len = %d",len);
+        //     // }
+        // }
+    }
+}
+
+
+//发送AT指令并printf回复
 char* SEND_AT_CMD(const char* cmd, int delay)
 {
 //清除FIFO中可能存在的乱七八糟的缓存
     uart_flush(UART_4G_NUM);
-
-    uart_write_bytes(UART_4G_NUM, cmd, strlen(cmd));
-    ESP_LOGI(TAG, "Sent CMD: %s",cmd);
-    
-    vTaskDelay(pdMS_TO_TICKS(delay));
+    AT_CMD_SENDING_FLAG = 1;
 
     static char buffer[BUF_SIZE] = "\0";
-    int len = uart_read_bytes(UART_4G_NUM, buffer, BUF_SIZE - 1, 10);
+    memset(buffer,0,sizeof(buffer));
+    uart_event_t event;
+    int len = 0;
+
+    char cmd_no_LF[strlen(cmd)];
+    strcpy(cmd_no_LF,cmd);
+    cmd_no_LF[strlen(cmd)-1] = '\0';
+
+    uart_write_bytes(UART_4G_NUM, cmd, strlen(cmd));
+    ESP_LOGI(TAG, "Sent CMD: %s",cmd_no_LF);
+    
+    //vTaskDelay(pdMS_TO_TICKS(delay));
+
+    if (xQueueReceive(uart_4G_event_queue, (void *)&event, (TickType_t)portMAX_DELAY))
+    {
+        if(event.type == UART_DATA)
+        {
+            len = uart_read_bytes(UART_4G_NUM, buffer, BUF_SIZE - 1, 10);
+            
+        }
+    }
+    
+    ESP_LOGI(TAG, "AT Response:");
+    printf("%s",buffer);
+
+    if (len > 0) {
+        buffer[len] = '\0';
+        return buffer;
+    } else {
+        return "\0";
+    }
+
+    AT_CMD_SENDING_FLAG = 0;
+}
+
+//发送AT指令但不printf回复
+char* SEND_AT_CMD_NO_PRINT(const char* cmd, int delay)
+{
+//清除FIFO中可能存在的乱七八糟的缓存
+    uart_flush(UART_4G_NUM);
+    AT_CMD_SENDING_FLAG = 1;
+
+    uart_write_bytes(UART_4G_NUM, cmd, strlen(cmd));
+    char cmd_no_LF[strlen(cmd)];
+    strcpy(cmd_no_LF,cmd);
+    cmd_no_LF[strlen(cmd)-1] = '\0';
+    ESP_LOGI(TAG, "Sent CMD: %s",cmd_no_LF);
+    
+    //vTaskDelay(pdMS_TO_TICKS(delay));
+
+    static char buffer[BUF_SIZE] = "\0";
+    memset(buffer,0,sizeof(buffer));
+    int len = 0;
+
+    for(;;)
+    {
+        uart_event_t event;
+        if (xQueueReceive(uart_4G_event_queue, (void *)&event, (TickType_t)portMAX_DELAY))
+        {
+            if(event.type == UART_DATA)
+            {
+                len = uart_read_bytes(UART_4G_NUM, buffer, BUF_SIZE - 1, 10);
+                break;
+            }
+        }
+    }
 
     // ESP_LOGI(TAG, "AT Response:");
     // printf("%s",buffer);
@@ -114,74 +313,6 @@ char* SEND_AT_CMD(const char* cmd, int delay)
     } else {
         return "\0";
     }
+
+    AT_CMD_SENDING_FLAG = 0;
 }
-
-
-/*
-    Transfer SYNC_DATA from ESP32 to EC800M through UART1
-    relay_status(1 Byte) + power(6 Bytes) + power_thresh(4 Bytes) + battery_or_dc(1 Byte)
-    + battery_voltage_percent(3 Bytes) + WIFI_or_4G(1 Byte) = 16 Bytes
-*/
-/*int SYNC_DATA_TRANSFER(SYNC_DATA_t DATA)
-{
-    char data[19];
-    sprintf(data, "#%d%-6.1f%-4d%d%-3d%d$",DATA.relay_status,DATA.power,DATA.power_thresh,DATA.battery_or_dc,DATA.battery_voltage_percent,DATA.WIFI_or_4G);
-    uart_write_bytes(UART_4G_NUM, data, strlen(data));
-    printf("Data Transferred! %s\n",data);
-    return 0;
-}
-*/
-
-// void SYNC_DATA_TRANSFER(SYNC_DATA_t DATA)
-// {
-//     uart_write_bytes(UART_4G_NUM, AT_MPUB, strlen(AT_MPUB));
-//     printf("Written: %s\n",AT_MPUB);
-//     vTaskDelay(pdMS_TO_TICKS(AT_RESPONSE_DELAY));
-
-// }
-
-// void RELAY_STATUS_UPDATE(int new_status)
-// {
-//     if(new_status == RELAY_ON) uart_write_bytes(UART_4G_NUM, AT_MPUB_RELAY_ON, strlen(AT_MPUB_RELAY_ON));
-//         else uart_write_bytes(UART_4G_NUM, AT_MPUB_RELAY_OFF, strlen(AT_MPUB_RELAY_OFF));
-        
-//     ESP_LOGI(TAG, "New status %d updated to cloud platform.", new_status);
-// }
-
-// void SYNC_DATA_RECEIVE()
-// {
-
-// }
-
-// void UART1_EVENT_TASK()
-// {
-//     ESP_LOGI(TAG, "UART1_EVENT_TASK has been started.");
-
-//     UART_BL0942_INST();
-
-//     uart_event_t event;
-
-//     while(1)
-//     {
-//         if(xQueueReceive(uart1_event_queue, &event, portMAX_DELAY))
-//         {
-//             ESP_LOGI(TAG, "Receive event.");
-//             if(event.type == UART_DATA)
-//             {
-//                 ESP_LOGI(TAG, "[UART DATA]: %d", event.size);
-//                 uint8_t data[event.size];
-//                 uart_read_bytes(UART_4G_NUM, data, event.size, portMAX_DELAY);
-//                 printf("%s",data);
-                
-//                 /* char msg_buf[event.size+1];
-//                 memcpy(msg_buf, data, event.size);
-//                 msg_buf[event.size] = '\0';
-//                 printf("%s",msg_buf);
-//                 if(strstr(msg_buf, "+MSUB:") != NULL)
-//                 {
-//                     printf("msg_buf: %c",msg_buf[42]);
-//                 } */
-//             }
-//         }
-//     }
-// }
