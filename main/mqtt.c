@@ -49,6 +49,8 @@ void MQTT_UPDATE_DAEMON()
         //如果通过WIFI连接的MQTT初始化完成，则通过WIFI上报MQTT服务器
         {
             int msg_id;
+
+            msg_id = esp_mqtt_client_publish(client_now, "/topic/online", "1", 0, 1, 0);
             
             char power[10]="\0";
             sprintf(power, "%0.1fW", BL0942_POWER);
@@ -87,6 +89,13 @@ void MQTT_UPDATE_DAEMON()
                 RELAY_CHANGE_SOURCE change = FROM_INTERNET;
                 xQueueSendFromISR(relay_event_queue, &change, NULL);
             }
+
+            //发送online心跳
+            sprintf(cmd, "AT+MPUB=\"/topic/online\",0,0,\"%s\"\r\n","1");
+            memset(response,0,sizeof(response));
+            strcpy(response, SEND_AT_CMD_NO_PRINT(cmd, AT_RESPONSE_DELAY));
+            if(strstr(response,"OK") != NULL) ESP_LOGI(TAG, "Online status updated.");
+            else ESP_LOGI(TAG, "Power update failed!");
 
             //上报功耗信息
             char power[10]="\0";
@@ -141,6 +150,9 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         msg_id = esp_mqtt_client_subscribe(client_now, "/topic/relay_status_ctrl", 0);
         ESP_LOGI(TAG, "Subscribed topic relay_status, msg_id=%d", msg_id);
 
+        msg_id = esp_mqtt_client_subscribe(client_now, "/topic/power_thresh_ctrl", 0);
+        ESP_LOGI(TAG, "Subscribed topic power_thresh_ctrl, msg_id=%d", msg_id);
+
         MQTT_RELAY_STATUS_UPDATE(RELAY_STATUS_FLAG);
         
         break;
@@ -165,16 +177,17 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         break;
 
     case MQTT_EVENT_DATA:
-        // ESP_LOGW(TAG, "MQTT_EVENT_DATA");
-        // printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
-        // printf("DATA=%.*s\r\n", event->data_len, event->data);
+        ESP_LOGW(TAG, "MQTT_EVENT_DATA");
+        printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
+        printf("DATA=%.*s\r\n", event->data_len, event->data);
         if( strstr(event->topic, "/topic/relay_status_ctrl") != NULL){
 
             RELAY_CHANGE_SOURCE change = FROM_INTERNET;
             xQueueSendFromISR(relay_event_queue, &change, NULL);
         }
-        else if( strstr(event->topic, "/topic/power_thresh") != NULL){
+        else if( strstr(event->topic, "/topic/power_thresh_ctrl") != NULL){
             
+            POWER_THRESH = atoi(event->data);
         }
         break;
     case MQTT_EVENT_ERROR:
@@ -203,7 +216,12 @@ void MQTT_WIFI_INIT()
         .credentials.authentication.password = MQTT_PASSWD,
         .network.disable_auto_reconnect = false,
         .network.reconnect_timeout_ms = 5000,
-        .session.keepalive = 120,
+        .session.keepalive = 5,
+        .session.last_will.topic = "/topic/online",
+        .session.last_will.msg = "0",
+        .session.last_will.msg_len = 1,
+        .session.last_will.qos = 0,
+        .session.last_will.retain = 0,
         .broker.verification.skip_cert_common_name_check = true
 
     };

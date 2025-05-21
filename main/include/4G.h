@@ -21,10 +21,10 @@
 #define AT_CIFSR "AT+CIFSR\r\n" //查询数据网络是否激活成功
 
 //Air780EP AT MQTT CMD
-#define AT_MCONFIG "AT+MCONFIG=\"Smart_Socket_4G\",\"zhoudreams\",\"sbzjx250\"\r\n" //设置 MQTT 相关参数
+#define AT_MCONFIG "AT+MCONFIG=\"Smart_Socket_4G\",\"zhoudreams\",\"sbzjx250\",0,0,\"/topic/online\",\"0\"\r\n" //设置 MQTT 相关参数
 #define AT_MQTTMSGSET_1 "AT+MQTTMSGSET=1\r\n" //设置MQTT订阅消息为缓存模式
 #define AT_MIPSTART "AT+MIPSTART=\"mqtt.jovisdreams.site\",1883\r\n" //建立 TCP 连接
-#define AT_MCONNECT "AT+MCONNECT=1,120\r\n" //客户端向服务器请求会话连接
+#define AT_MCONNECT "AT+MCONNECT=1,5\r\n" //客户端向服务器请求会话连接
 #define AT_MQTTSTATU "AT+MQTTSTATU\r\n" //查询MQTT连接状态
 
 void UART_4G_INST(); //4G UART初始化
