@@ -76,10 +76,19 @@ void setup()
             break;
         }
 
-        vTaskDelay(pdMS_TO_TICKS(500));
+        vTaskDelay(pdMS_TO_TICKS(200));
     }
     
-    xTaskCreate(MQTT_UPDATE_DAEMON, "MQTT_UPDATE_DAEMON", 4096, NULL, 2, NULL);
+    while (1)
+    {
+        if(MQTT_WIFI_CONNECTED_FLAG == 1 || Air780EP_ONLINE_FLAG == 1)
+        {
+            xTaskCreate(MQTT_UPDATE_DAEMON, "MQTT_UPDATE_DAEMON", 4096, NULL, 2, NULL);
+            break;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(200));
+    }
     
 
 
