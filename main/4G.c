@@ -142,6 +142,16 @@ void AIR780EP_INST()
             continue;
         }
 
+        sprintf(cmd, "AT+MSUB=\"/topic/power_thresh_ctrl\",0\r\n");
+        memset(response,0,sizeof(response));
+        strcpy(response, SEND_AT_CMD_NO_PRINT(cmd, AT_RESPONSE_DELAY));
+        if(strstr(response,"OK") != NULL) ESP_LOGI(TAG, "/topic/power_thresh_ctrl subscribed.");
+        else
+        {
+            ESP_LOGI(TAG, "topic/power_thresh_ctrl subscribe failed!");
+            continue;
+        }
+
 
         // sprintf(cmd, "AT+MSUB=\"/topic/relay_status\",0\r\n");
         // memset(response,0,sizeof(response));

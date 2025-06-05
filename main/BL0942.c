@@ -8,16 +8,19 @@
 #include "freertos/FreeRTOS.h"
 #include <math.h>
 #include "driver/uart.h"
+#include "freertos/task.h"
+#include "freertos/queue.h"
 #include <string.h>
 #include <stdbool.h>
 #include "esp_log.h"
 #include "BL0942.h"
+
 #include "config.h"
 
 #define TAG "BL0942.c"
 
 float BL0942_POWER = 0; //全局变量，BL0942检测到的有功功率
-int POWER_THRESH = 0; //全局变量，用户设置的功率限制
+int POWER_THRESH = 2500; //全局变量，用户设置的功率限制，默认为2500W
 int POWER_ACCUMULATION = 0; //全局变量，已用电量
 
 //BL0942 IC初始化
@@ -77,9 +80,15 @@ void BL0942_READ_TASK()
         current_OUT =  (a_rms_raw * 1.218 ) / (305978/(0.001*1000));
         p_rms_raw = (response[12] << 16) | (response[11] << 8) | response[10];
         power_LOAD = (p_rms_raw * 1.218 * 1.218 * (390*5 + 0.51) ) / (3537 * 1 * 0.51 * 1000);
+        if(power_LOAD > 10000) continue; //在继电器切换的时候有时会出现20000多瓦的异常数据，原因不明，先治标再说
 
         BL0942_POWER = roundf(power_LOAD*10)/10;
-        
+        if(BL0942_POWER > POWER_THRESH)
+        {
+            RELAY_CHANGE_SOURCE change = FROM_BUTTON;
+            xQueueSendFromISR(relay_event_queue, &change, NULL);
+            ESP_LOGE(TAG, "Power exceeds the limit! Shut the relay.");
+        }
         //ESP_LOGI(TAG, "Voltage: %0.1fV, Current: %0.1fA, Power: %0.1fW",voltage_AC_IN, current_OUT, BL0942_POWER);
         
 
