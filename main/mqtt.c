@@ -159,6 +159,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
     case MQTT_EVENT_DISCONNECTED:
         MQTT_WIFI_CONNECTED_FLAG = 0;
+        SEND_AT_CMD_NO_PRINT("AT+MQTTMSGGET\r\n", AT_RESPONSE_DELAY);
         ESP_LOGW(TAG, "MQTT_EVENT_DISCONNECTED");
         break;
 
