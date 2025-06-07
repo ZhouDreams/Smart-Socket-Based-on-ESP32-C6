@@ -55,5 +55,4 @@ dkms.conf
 .devcontainer/
 build/
 QuencPython/
-/sdkconfig
 /sdkconfig.old
