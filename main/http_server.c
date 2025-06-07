@@ -141,10 +141,10 @@ static esp_err_t scan_get_handler(httpd_req_t *req)
     if (mode & WIFI_MODE_STA) {
         // 检查是否正在连接
         wifi_ap_record_t ap_info;
-        if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
-            esp_wifi_disconnect();
-            vTaskDelay(pdMS_TO_TICKS(500)); // 等待断开完成
-        }
+        // if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+        //     esp_wifi_disconnect();
+        //     vTaskDelay(pdMS_TO_TICKS(500)); // 等待断开完成
+        // }
     }
     
     ESP_LOGI(TAG, "清除之前的扫描结果");
