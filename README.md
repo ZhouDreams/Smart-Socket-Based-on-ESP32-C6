@@ -2,3 +2,6 @@
 本科毕业设计软件设计部分。\
 其中http_server.c和wifi_manager.c借用了@jxingnian 的代码\
 https://github.com/jxingnian/esp32_wifi_network_config
+
+# EIE568 IOT-TOOLS AND APPLICATIONS
+PolyU MSc of EIE course design addition.
