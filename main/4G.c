@@ -45,7 +45,7 @@ void AIR780EP_INST()
     //重启模块
     restart_4g:
         memset(response,0,sizeof(response));
-        strcpy(response, SEND_AT_CMD(AT_RESET, 3000)); 
+        strcpy(response, SEND_AT_CMD(AT_RESET)); 
         vTaskDelay(pdMS_TO_TICKS(2000));
         if( strstr(response, "OK") == NULL) goto restart_4g;
         ESP_LOGI(TAG, "The module has been reset.");
@@ -61,7 +61,7 @@ void AIR780EP_INST()
 
     //检查SIM卡状态
         memset(response,0,sizeof(response));
-        strcpy(response, SEND_AT_CMD(AT_CPIN, AT_RESPONSE_DELAY)); 
+        strcpy(response, SEND_AT_CMD(AT_CPIN)); 
         char *data_pointer = NULL;
         
         if( strstr(response, "READY") == NULL)
@@ -73,7 +73,7 @@ void AIR780EP_INST()
 
     //检查信号强度
         memset(response,0,sizeof(response));
-        strcpy(response, SEND_AT_CMD(AT_CSQ, AT_RESPONSE_DELAY)); 
+        strcpy(response, SEND_AT_CMD(AT_CSQ)); 
         data_pointer = strstr(response, "+CSQ: ") + 6;
         int csq = *(data_pointer + 1) == ','?(*data_pointer - '0') : (*data_pointer - '0')*10 + (*(data_pointer+1) - '0');
         //这一段的目的是将"+CSQ:"后面跟着的数值从字符串里提取出来
@@ -90,7 +90,7 @@ void AIR780EP_INST()
 
     //查询网络注册情况
         memset(response,0,sizeof(response));
-        strcpy(response, SEND_AT_CMD(AT_CGATT, AT_RESPONSE_DELAY)); 
+        strcpy(response, SEND_AT_CMD(AT_CGATT)); 
         data_pointer = strstr(response, "+CGATT: ") + 8; //思路同上
         if( *data_pointer == '1') ESP_LOGI(TAG, "The network registration is successful.");
         else{
@@ -100,8 +100,8 @@ void AIR780EP_INST()
 
     //配置数据网络
         memset(response,0,sizeof(response));
-        SEND_AT_CMD(AT_CIPSHUT, AT_RESPONSE_DELAY);
-        strcpy(response, SEND_AT_CMD(AT_CSTT, AT_RESPONSE_DELAY)); 
+        SEND_AT_CMD(AT_CIPSHUT);
+        strcpy(response, SEND_AT_CMD(AT_CSTT)); 
         if( strstr(response, "OK") == NULL)
         {
             ESP_LOGE(TAG, "Data network configuration failed! Returning.");
@@ -111,7 +111,7 @@ void AIR780EP_INST()
 
     //激活数据网络
         memset(response,0,sizeof(response));
-        strcpy(response, SEND_AT_CMD(AT_CIICR, AT_RESPONSE_DELAY)); 
+        strcpy(response, SEND_AT_CMD(AT_CIICR)); 
         if( strstr(response, "OK") == NULL) 
         {
             ESP_LOGE(TAG, "Data network activation failed! Returning.");
@@ -120,7 +120,7 @@ void AIR780EP_INST()
 
     //查询数据网络是否激活成功
         memset(response,0,sizeof(response));
-        strcpy(response, SEND_AT_CMD(AT_CIFSR, AT_RESPONSE_DELAY)); 
+        strcpy(response, SEND_AT_CMD(AT_CIFSR)); 
         if( strstr(response, "ERROR") != NULL) 
         {
             ESP_LOGE(TAG, "Data network activation failed! Returning.");
@@ -130,22 +130,22 @@ void AIR780EP_INST()
     
     //设置MQTT相关参数
         memset(response,0,sizeof(response));
-        strcpy(response, SEND_AT_CMD(AT_MCONFIG, AT_RESPONSE_DELAY));
+        strcpy(response, SEND_AT_CMD(AT_MCONFIG));
         if( strstr(response, "OK") == NULL) continue;
 
     //设置MQTT订阅消息为缓存模式
         memset(response,0,sizeof(response));
-        strcpy(response, SEND_AT_CMD(AT_MQTTMSGSET_1, AT_RESPONSE_DELAY));
+        strcpy(response, SEND_AT_CMD(AT_MQTTMSGSET_1));
         if( strstr(response, "OK") == NULL) continue;
     
     //建立TCP连接
         memset(response,0,sizeof(response));
-        strcpy(response, SEND_AT_CMD(AT_MIPSTART, AT_RESPONSE_DELAY));
+        strcpy(response, SEND_AT_CMD(AT_MIPSTART));
         if( strstr(response, "OK") == NULL) continue;
     
     //客户端向服务器请求会话连接
         memset(response,0,sizeof(response));
-        strcpy(response, SEND_AT_CMD(AT_MCONNECT, AT_RESPONSE_DELAY));
+        strcpy(response, SEND_AT_CMD(AT_MCONNECT));
         if( strstr(response, "OK") == NULL) continue;
     
 
@@ -313,7 +313,7 @@ void AIR780EP_LIVE_DAEMON()
 
             char response[BUF_SIZE] = "\0";
             memset(response,0,sizeof(response));
-            strcpy(response, SEND_AT_CMD_NO_PRINT(AT_MQTTSTATU, AT_RESPONSE_DELAY));
+            strcpy(response, SEND_AT_CMD_NO_PRINT(AT_MQTTSTATU));
             if(strstr(response,"+MQTTSTATU :1") == NULL)
             {
                 ESP_LOGE(TAG, "Bad 4G MQTTSTATUS!");
@@ -346,7 +346,7 @@ void AIR780EP_LIVE_DAEMON()
 }
 
 //发送AT指令并printf回复
-char* SEND_AT_CMD(const char* cmd, const int delay)
+char* SEND_AT_CMD(const char* cmd)
 {
     at_waiter.AT_CMD_SENDING_FLAG = 1;
     strcpy(at_waiter.AT_RESPOND, "\0");
@@ -365,7 +365,7 @@ char* SEND_AT_CMD(const char* cmd, const int delay)
 }
 
 //发送AT指令但不printf回复
-char* SEND_AT_CMD_NO_PRINT(const char* cmd, const int delay)
+char* SEND_AT_CMD_NO_PRINT(const char* cmd)
 {
     at_waiter.AT_CMD_SENDING_FLAG = 1;
     strcpy(at_waiter.AT_RESPOND, "\0");

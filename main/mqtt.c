@@ -83,7 +83,7 @@ void MQTT_UPDATE_DAEMON()
             //检查缓存里有没有订阅信息
             sprintf(cmd, "AT+MQTTMSGGET\r\n");
             memset(response,0,sizeof(response));
-            strcpy(response, SEND_AT_CMD_NO_PRINT(cmd, AT_RESPONSE_DELAY));
+            strcpy(response, SEND_AT_CMD_NO_PRINT(cmd));
             if(strstr(response, "+MSUB: \"25108143g/relay_status_ctrl\",1 byte,1") != NULL)
             {
                 RELAY_CHANGE_SOURCE change = FROM_INTERNET;
@@ -93,7 +93,7 @@ void MQTT_UPDATE_DAEMON()
             //发送online心跳
             sprintf(cmd, "AT+MPUB=\"25108143g/online\",0,0,\"%s\"\r\n","1");
             memset(response,0,sizeof(response));
-            strcpy(response, SEND_AT_CMD_NO_PRINT(cmd, AT_RESPONSE_DELAY));
+            strcpy(response, SEND_AT_CMD_NO_PRINT(cmd));
             if(strstr(response,"OK") != NULL) ESP_LOGI(TAG, "Online status updated.");
             else ESP_LOGI(TAG, "Power update failed!");
 
@@ -102,7 +102,7 @@ void MQTT_UPDATE_DAEMON()
             sprintf(power, "%0.1fW", BL0942_POWER);
             sprintf(cmd, "AT+MPUB=\"25108143g/power\",0,0,\"%s\"\r\n",power);
             memset(response,0,sizeof(response));
-            strcpy(response, SEND_AT_CMD_NO_PRINT(cmd, AT_RESPONSE_DELAY));
+            strcpy(response, SEND_AT_CMD_NO_PRINT(cmd));
             if(strstr(response,"OK") != NULL) ESP_LOGI(TAG, "Power = %s updated.", power);
             else ESP_LOGI(TAG, "Power update failed!");
 
@@ -111,7 +111,7 @@ void MQTT_UPDATE_DAEMON()
             sprintf(relay_status, "%d", RELAY_STATUS_FLAG);
             sprintf(cmd, "AT+MPUB=\"25108143g/relay_status\",0,0,\"%s\"\r\n",relay_status);
             memset(response,0,sizeof(response));
-            strcpy(response, SEND_AT_CMD_NO_PRINT(cmd, AT_RESPONSE_DELAY));
+            strcpy(response, SEND_AT_CMD_NO_PRINT(cmd));
             if(strstr(response,"OK") != NULL) ESP_LOGI(TAG, "Relay status = %s updated.", relay_status);
             else ESP_LOGI(TAG, "Relay status update failed!");
 
@@ -119,7 +119,7 @@ void MQTT_UPDATE_DAEMON()
             char network[3]="4G";
             sprintf(cmd, "AT+MPUB=\"25108143g/network\",0,0,\"%s\"\r\n",network);
             memset(response,0,sizeof(response));
-            strcpy(response, SEND_AT_CMD_NO_PRINT(cmd, AT_RESPONSE_DELAY));
+            strcpy(response, SEND_AT_CMD_NO_PRINT(cmd));
             if(strstr(response,"OK") != NULL) ESP_LOGI(TAG, "Network = %s updated.", network);
             else ESP_LOGI(TAG, "Network update failed!");
 
@@ -159,7 +159,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
     case MQTT_EVENT_DISCONNECTED:
         MQTT_WIFI_CONNECTED_FLAG = 0;
-        SEND_AT_CMD_NO_PRINT("AT+MQTTMSGGET\r\n", AT_RESPONSE_DELAY);
+        SEND_AT_CMD_NO_PRINT("AT+MQTTMSGGET\r\n");
         ESP_LOGW(TAG, "MQTT_EVENT_DISCONNECTED");
         break;
 

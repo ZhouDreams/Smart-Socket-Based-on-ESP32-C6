@@ -32,8 +32,8 @@ void UART_4G_INST(); //4G UART初始化
 void AIR780EP_INST(); //初始化4G模块
 void AIR780EP_RX_TASK(); //4G模块串口信息接收
 void AIR780EP_LIVE_DAEMON(); //检测4G联网是否正常
-char* SEND_AT_CMD(const char* cmd, const int delay); //发送AT指令并返回串口的回复内容
-char* SEND_AT_CMD_NO_PRINT(const char* cmd, const int delay); //发送AT指令并返回串口的回复内容，但是不print
+char* SEND_AT_CMD(const char* cmd); //发送AT指令并返回串口的回复内容
+char* SEND_AT_CMD_NO_PRINT(const char* cmd); //发送AT指令并返回串口的回复内容，但是不print
 
 
 
