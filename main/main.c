@@ -36,11 +36,11 @@ void setup()
     relay_event_queue = xQueueCreate(10,sizeof(RELAY_CHANGE_SOURCE)); //创建继电器事件队列
     gpio_install_isr_service(0); //安装GPIO ISR服务
     gpio_isr_handler_add(GPIO_BUTTON_NUM, BUTTON_ISR_HANDLER, NULL); //添加按钮的GPIO中断
-    xTaskCreate(RELAY_TASK, "RELAY_TASK", 4096, NULL, 10, NULL); //启动继电器任务
+    xTaskCreate(RELAY_TASK, "RELAY_TASK", 4096, NULL, 4, NULL); //启动继电器任务
 
 //----------初始化BL0942计量模块----------
     UART_BL0942_INST();
-    xTaskCreate(BL0942_READ_TASK, "BL0942_READ_TASK", 4096, NULL, 2, NULL); //启动从BL0942周期读取电量数据的任务
+    xTaskCreate(BL0942_READ_TASK, "BL0942_READ_TASK", 4096, NULL, 4, NULL); //启动从BL0942周期读取电量数据的任务
     
 //----------初始化WIFI----------
     WIFI_GPIO18_INIT(); //初始化WIFI连接状态指示灯
@@ -63,7 +63,8 @@ void setup()
 
 //----------初始化4G模块----------
     UART_4G_INST();
-    
+
+    xTaskCreate(AIR780EP_RX_TASK, "AIR780EP_RX_TASK", 4096, NULL, 5, NULL);
     xTaskCreate(AIR780EP_INST, "AIR780EP_INST", 4096, NULL, 1, NULL);
 
 //----------初始化MQTT----------
@@ -83,7 +84,7 @@ void setup()
     {
         if(MQTT_WIFI_CONNECTED_FLAG == 1 || Air780EP_ONLINE_FLAG == 1)
         {
-            xTaskCreate(MQTT_UPDATE_DAEMON, "MQTT_UPDATE_DAEMON", 4096, NULL, 2, NULL);
+            xTaskCreate(MQTT_UPDATE_DAEMON, "MQTT_UPDATE_DAEMON", 4096, NULL, 3, NULL);
             break;
         }
 

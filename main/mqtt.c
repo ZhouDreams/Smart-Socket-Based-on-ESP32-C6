@@ -84,14 +84,14 @@ void MQTT_UPDATE_DAEMON()
             sprintf(cmd, "AT+MQTTMSGGET\r\n");
             memset(response,0,sizeof(response));
             strcpy(response, SEND_AT_CMD_NO_PRINT(cmd, AT_RESPONSE_DELAY));
-            if(strstr(response, "+MSUB: \"/topic/relay_status_ctrl\",1 byte,1") != NULL)
+            if(strstr(response, "+MSUB: \"25108143g/relay_status_ctrl\",1 byte,1") != NULL)
             {
                 RELAY_CHANGE_SOURCE change = FROM_INTERNET;
                 xQueueSendFromISR(relay_event_queue, &change, NULL);
             }
 
             //发送online心跳
-            sprintf(cmd, "AT+MPUB=\"/topic/online\",0,0,\"%s\"\r\n","1");
+            sprintf(cmd, "AT+MPUB=\"25108143g/online\",0,0,\"%s\"\r\n","1");
             memset(response,0,sizeof(response));
             strcpy(response, SEND_AT_CMD_NO_PRINT(cmd, AT_RESPONSE_DELAY));
             if(strstr(response,"OK") != NULL) ESP_LOGI(TAG, "Online status updated.");
@@ -100,7 +100,7 @@ void MQTT_UPDATE_DAEMON()
             //上报功耗信息
             char power[10]="\0";
             sprintf(power, "%0.1fW", BL0942_POWER);
-            sprintf(cmd, "AT+MPUB=\"/topic/power\",0,0,\"%s\"\r\n",power);
+            sprintf(cmd, "AT+MPUB=\"25108143g/power\",0,0,\"%s\"\r\n",power);
             memset(response,0,sizeof(response));
             strcpy(response, SEND_AT_CMD_NO_PRINT(cmd, AT_RESPONSE_DELAY));
             if(strstr(response,"OK") != NULL) ESP_LOGI(TAG, "Power = %s updated.", power);
@@ -109,7 +109,7 @@ void MQTT_UPDATE_DAEMON()
             //上报继电器状态
             char relay_status[3]="\0";
             sprintf(relay_status, "%d", RELAY_STATUS_FLAG);
-            sprintf(cmd, "AT+MPUB=\"/topic/relay_status\",0,0,\"%s\"\r\n",relay_status);
+            sprintf(cmd, "AT+MPUB=\"25108143g/relay_status\",0,0,\"%s\"\r\n",relay_status);
             memset(response,0,sizeof(response));
             strcpy(response, SEND_AT_CMD_NO_PRINT(cmd, AT_RESPONSE_DELAY));
             if(strstr(response,"OK") != NULL) ESP_LOGI(TAG, "Relay status = %s updated.", relay_status);
@@ -117,7 +117,7 @@ void MQTT_UPDATE_DAEMON()
 
             //上报当前网络
             char network[3]="4G";
-            sprintf(cmd, "AT+MPUB=\"/topic/network\",0,0,\"%s\"\r\n",network);
+            sprintf(cmd, "AT+MPUB=\"25108143g/network\",0,0,\"%s\"\r\n",network);
             memset(response,0,sizeof(response));
             strcpy(response, SEND_AT_CMD_NO_PRINT(cmd, AT_RESPONSE_DELAY));
             if(strstr(response,"OK") != NULL) ESP_LOGI(TAG, "Network = %s updated.", network);

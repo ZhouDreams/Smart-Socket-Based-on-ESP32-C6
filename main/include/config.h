@@ -23,8 +23,8 @@ extern int AT_CMD_SENDING_FLAG;
 //----------UART related----------
 #define UART_4G_NUM UART_NUM_1
 #define UART_4G_BAUD_RATE 115200
-#define UART_4G_TX 6 //GPIO6
-#define UART_4G_RX 7 //GPIO7
+#define UART_4G_TX 10 //GPIO10
+#define UART_4G_RX 11 //GPIO11
 extern uart_config_t uart_config_4G;
 
 #define UART_BL0942_NUM LP_UART_NUM_0
@@ -36,10 +36,10 @@ extern uart_config_t uart_config_BL0942;
 #define BUF_SIZE 1024
 
 //----------GPIO Related----------
-#define GPIO2_PIN 5 //继电器
-#define GPIO3_PIN 6 //按钮
-#define GPIO_RELAY_NUM GPIO_NUM_2
-#define GPIO_BUTTON_NUM GPIO_NUM_3
+#define GPIO0_PIN 8 //继电器GPIO0
+#define GPIO1_PIN 9 //按钮GPIO1
+#define GPIO_RELAY_NUM GPIO_NUM_0
+#define GPIO_BUTTON_NUM GPIO_NUM_1
 #define GPIO_WIFI_NUM GPIO_NUM_18
 #define LED_ON 1
 #define LED_OFF 0

@@ -16,22 +16,24 @@
 #define AT_CPIN "AT+CPIN?\r\n" //查询SIM卡是否准备好
 #define AT_CSQ "AT+CSQ\r\n" //查询信号强度
 #define AT_CGATT "AT+CGATT?\r\n" //查询上网服务是否激活
+#define AT_CIPSHUT "AT+CIPSHUT\r\n" //关闭移动场景
 #define AT_CSTT "AT+CSTT\r\n" //配置数据网络
 #define AT_CIICR "AT+CIICR\r\n" //激活数据网络
 #define AT_CIFSR "AT+CIFSR\r\n" //查询数据网络是否激活成功
 
 //Air780EP AT MQTT CMD
-#define AT_MCONFIG "AT+MCONFIG=\"Smart_Socket_4G\",\"zhoudreams\",\"sbzjx250\",0,0,\"/topic/online\",\"0\"\r\n" //设置 MQTT 相关参数
+#define AT_MCONFIG "AT+MCONFIG=\"Smart_Socket_4G\",\"\",\"\",0,0,\"25108143g/online\",\"0\"\r\n" //设置 MQTT 相关参数
 #define AT_MQTTMSGSET_1 "AT+MQTTMSGSET=1\r\n" //设置MQTT订阅消息为缓存模式
-#define AT_MIPSTART "AT+MIPSTART=\"mqtt.jovisdreams.site\",1883\r\n" //建立 TCP 连接
+#define AT_MIPSTART "AT+MIPSTART=\"test.mosquitto.org\",1883\r\n" //建立 TCP 连接
 #define AT_MCONNECT "AT+MCONNECT=1,5\r\n" //客户端向服务器请求会话连接
 #define AT_MQTTSTATU "AT+MQTTSTATU\r\n" //查询MQTT连接状态
 
 void UART_4G_INST(); //4G UART初始化
 void AIR780EP_INST(); //初始化4G模块
-void AIR780EP_LIVE_DAEMON();
-char* SEND_AT_CMD(const char* cmd, int delay); //发送AT指令并返回串口的回复内容
-char* SEND_AT_CMD_NO_PRINT(const char* cmd, int delay);
+void AIR780EP_RX_TASK(); //4G模块串口信息接收
+void AIR780EP_LIVE_DAEMON(); //检测4G联网是否正常
+char* SEND_AT_CMD(const char* cmd, const int delay); //发送AT指令并返回串口的回复内容
+char* SEND_AT_CMD_NO_PRINT(const char* cmd, const int delay); //发送AT指令并返回串口的回复内容，但是不print
 
 
 
