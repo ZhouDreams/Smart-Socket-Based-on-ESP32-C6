@@ -5,26 +5,32 @@
     Email: zhoudreamstk@foxmail.com
 */
 
-#include "freertos/FreeRTOS.h"
-#include <math.h>
-#include "driver/uart.h"
-#include "freertos/task.h"
-#include "freertos/queue.h"
 #include <string.h>
 #include <stdbool.h>
+#include <math.h>
 #include "esp_log.h"
-#include "BL0942.h"
+#include "driver/uart.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/queue.h"
+#include "bl0942.h"
 
-#include "config.h"
+#define TAG "bl0942"
 
-#define TAG "BL0942.c"
+uart_config_t uart_config_BL0942 = {
+    .baud_rate = UART_BL0942_BAUD_RATE,
+    .data_bits = UART_DATA_8_BITS,
+    .parity = UART_PARITY_DISABLE,
+    .stop_bits = UART_STOP_BITS_1,
+    .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+    .source_clk = LP_UART_SCLK_LP_FAST,
+};
 
-float BL0942_POWER = 0; //全局变量，BL0942检测到的有功功率
-int POWER_THRESH = 2500; //全局变量，用户设置的功率限制，默认为2500W
-int POWER_ACCUMULATION = 0; //全局变量，已用电量
+static float s_bl0942_power = 0; //BL0942检测到的有功功率
+static int s_bl0942_power_thresh = 2500; //用户设置的功率限制，默认为2500W
 
 //BL0942 IC初始化
-void UART_BL0942_INST()
+void bl0942_uart_inst()
 {
     ESP_ERROR_CHECK(uart_driver_install(UART_BL0942_NUM, BUF_SIZE, BUF_SIZE, 10, NULL, 0));
     ESP_ERROR_CHECK(uart_param_config(UART_BL0942_NUM, &uart_config_BL0942));
@@ -33,7 +39,7 @@ void UART_BL0942_INST()
 }
 
 //BL0942电量计量任务
-void BL0942_READ_TASK()
+static void bl0942_task()
 {
     char cmd = '\0';
     uint32_t v_rms_raw = 0;
@@ -82,14 +88,14 @@ void BL0942_READ_TASK()
         power_LOAD = (p_rms_raw * 1.218 * 1.218 * (390*5 + 0.51) ) / (3537 * 1 * 0.51 * 1000);
         if(power_LOAD > 10000) continue; //在继电器切换的时候有时会出现20000多瓦的异常数据，原因不明，先治标再说
 
-        BL0942_POWER = roundf(power_LOAD*10)/10;
-        if(BL0942_POWER > POWER_THRESH)
+        s_bl0942_power = roundf(power_LOAD*10)/10;
+        if(s_bl0942_power > s_bl0942_power_thresh)
         {
-            RELAY_CHANGE_SOURCE change = FROM_BUTTON;
-            xQueueSendFromISR(relay_event_queue, &change, NULL);
-            ESP_LOGE(TAG, "Power exceeds the limit! Shut the relay.");
+            // RELAY_CHANGE_SOURCE change = FROM_BUTTON;
+            // xQueueSendFromISR(relay_event_queue, &change, NULL);
+            // ESP_LOGE(TAG, "Power exceeds the limit! Shut the relay.");
         }
-        //ESP_LOGI(TAG, "Voltage: %0.1fV, Current: %0.1fA, Power: %0.1fW",voltage_AC_IN, current_OUT, BL0942_POWER);
+        ESP_LOGI(TAG, "Voltage: %0.1fV, Current: %0.1fA, Power: %0.1fW",voltage_AC_IN, current_OUT, s_bl0942_power);
         
 
         vTaskDelay(pdMS_TO_TICKS(500));
@@ -98,3 +104,17 @@ void BL0942_READ_TASK()
 
 }
 
+void bl0942_task_start()
+{
+    xTaskCreate(bl0942_task, "bl0942_task", 4096, NULL, 1, NULL); //启动从BL0942周期读取电量数据的任务
+}
+
+float bl0942_get_power()
+{
+    return s_bl0942_power;
+}
+
+int bl0942_get_power_thresh()
+{
+    return s_bl0942_power_thresh;
+}

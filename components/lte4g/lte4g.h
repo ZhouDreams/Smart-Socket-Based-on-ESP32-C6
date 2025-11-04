@@ -1,14 +1,23 @@
 /*
-    File: 4G.h
+    File: lte4g.h
     Memo: 控制和4G模块的通信
     Coder: Junxi Zhou, School of Microelectronics, South China University of Technology
     Email: zhoudreamstk@foxmail.com
 */
+#pragma once
 
-#ifndef __4G_H__
-#define __4G_H__
+#include "driver/uart.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #define AT_RESPONSE_DELAY 300
+#define UART_4G_NUM UART_NUM_1
+#define UART_4G_BAUD_RATE 115200
+#define UART_4G_TX 10 //GPIO10
+#define UART_4G_RX 11 //GPIO11
+#define BUF_SIZE 1024
 
 //Air780EP AT INIT CMD
 #define AT_CIMI "AT+CIMI\r\n"
@@ -25,16 +34,24 @@
 #define AT_MCONFIG "AT+MCONFIG=\"Smart_Socket_4G\",\"\",\"\",0,0,\"25108143g/online\",\"0\"\r\n" //设置 MQTT 相关参数
 #define AT_MQTTMSGSET_1 "AT+MQTTMSGSET=1\r\n" //设置MQTT订阅消息为缓存模式
 #define AT_MIPSTART "AT+MIPSTART=\"test.mosquitto.org\",1883\r\n" //建立 TCP 连接
-#define AT_MCONNECT "AT+MCONNECT=1,5\r\n" //客户端向服务器请求会话连接
+#define AT_MCONNECT "AT+MCONNECT=1,10\r\n" //客户端向服务器请求MQTT会话连接
+#define AT_MDISCONNECT "AT+MDISCONNECT\r\n" //关闭MQTT会话连接
 #define AT_MQTTSTATU "AT+MQTTSTATU\r\n" //查询MQTT连接状态
 
-void UART_4G_INST(); //4G UART初始化
-void AIR780EP_INST(); //初始化4G模块
-void AIR780EP_RX_TASK(); //4G模块串口信息接收
-void AIR780EP_LIVE_DAEMON(); //检测4G联网是否正常
-char* SEND_AT_CMD(const char* cmd); //发送AT指令并返回串口的回复内容
-char* SEND_AT_CMD_NO_PRINT(const char* cmd); //发送AT指令并返回串口的回复内容，但是不print
+void lte4g_uart_inst(); //4G UART初始化
 
+void lte4g_software_inst_start(); //初始化4G模块
 
+bool lte4g_get_online();
 
+void lte4g_rx_task_start(); //4G模块串口信息接收
+
+// void AIR780EP_LIVE_DAEMON(); //检测4G联网是否正常
+
+char* lte4g_send_at_cmd(const char* cmd); //发送AT指令并返回串口的回复内容
+
+char* lte4g_send_at_no_print(const char* cmd); //发送AT指令并返回串口的回复内容，但是不print
+
+#ifdef __cplusplus
+}
 #endif

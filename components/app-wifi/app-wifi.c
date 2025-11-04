@@ -9,9 +9,10 @@
 #include "nvs_flash.h"
 #include "lwip/err.h"
 #include "lwip/sys.h"
-#include "wifi_manager.h"
-#include "mqtt.h"
-#include "config.h"
+#include "app-wifi.h"
+#include "app-mqtt.h"
+
+#define TAG "app-wifi"
 
 // WiFi配置参数
 #define EXAMPLE_ESP_WIFI_SSID      "ESP32-C6"        // WiFi名称
@@ -19,18 +20,11 @@
 #define EXAMPLE_ESP_WIFI_CHANNEL   1     // WiFi信道
 #define EXAMPLE_MAX_STA_CONN       10     // 最大连接数
 
-static const char *TAG = "wifi_manager";  // 日志标签
 
 #define MAX_RETRY_COUNT 5
 static int s_retry_num = 0;
+static bool appwifi_connected = 0;
 
-//WIFI指示灯初始化
-void WIFI_GPIO18_INIT()
-{
-    gpio_reset_pin(GPIO_WIFI_NUM);
-    gpio_set_direction(GPIO_WIFI_NUM, GPIO_MODE_OUTPUT);
-    gpio_set_level(GPIO_WIFI_NUM, LED_OFF);
-}
 // WiFi事件处理函数
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                                     int32_t event_id, void* event_data)
@@ -57,15 +51,13 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
             case WIFI_EVENT_STA_CONNECTED:
                 ESP_LOGI(TAG, "WIFI_EVENT_STA_CONNECTED，已连接到AP");
                 s_retry_num = 0; // 重置重试计数
-                WIFI_CONNECTED_FLAG = 1;
-                gpio_set_level(GPIO_WIFI_NUM, LED_ON); //亮灯
+                appwifi_connected = 1;
                 break;
 
             case WIFI_EVENT_STA_DISCONNECTED:
                 wifi_event_sta_disconnected_t* event = (wifi_event_sta_disconnected_t*) event_data;
                 ESP_LOGW(TAG, "WiFi断开连接，原因:%d", event->reason);
-                WIFI_CONNECTED_FLAG = 0;
-                gpio_set_level(GPIO_WIFI_NUM, LED_OFF); //熄灯
+                appwifi_connected = 0;
                 if (s_retry_num < MAX_RETRY_COUNT) {
                     ESP_LOGI(TAG, "重试连接到AP... (%d/%d)", s_retry_num + 1, MAX_RETRY_COUNT);
                     esp_wifi_connect();
@@ -99,6 +91,11 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
             }
         }
     }
+}
+
+bool appwifi_get_connected()
+{
+    return appwifi_connected;
 }
 
 // 初始化WiFi软AP

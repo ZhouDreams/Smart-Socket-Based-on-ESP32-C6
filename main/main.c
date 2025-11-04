@@ -6,44 +6,37 @@
 */
 
 #include <string.h>
+#include "esp_log.h"
+#include "nvs_flash.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "driver/gpio.h"
 #include "driver/uart.h"
-#include "esp_log.h"
-#include "nvs_flash.h"
-#include "4G.h"
-#include "BL0942.h"
-#include "button.h"
-#include "relay.h"
-#include "http_server.h"
-#include "wifi_manager.h"
-#include "mqtt.h"
+#include "lte4g.h"
+#include "bl0942.h"
+#include "button-and-relay.h"
+#include "http-server.h"
+#include "app-wifi.h"
+#include "app-mqtt.h"
 #include "config.h"
 
-#define TAG "main.c"
-
-QueueHandle_t relay_event_queue = NULL; 
+#define TAG "main"
 
 void setup()
 {
     ESP_LOGI(TAG, "Enter setup().");
 
 //----------初始化继电器和按钮----------
-    RELAY_GPIO2_INST();
-    BUTTON_GPIO3_INST();
-    relay_event_queue = xQueueCreate(10,sizeof(RELAY_CHANGE_SOURCE)); //创建继电器事件队列
-    gpio_install_isr_service(0); //安装GPIO ISR服务
-    gpio_isr_handler_add(GPIO_BUTTON_NUM, BUTTON_ISR_HANDLER, NULL); //添加按钮的GPIO中断
-    xTaskCreate(RELAY_TASK, "RELAY_TASK", 4096, NULL, 4, NULL); //启动继电器任务
+    relay_gpio_inst();
+    button_gpio_inst();
+    relay_task_start();     //启动继电器任务
 
 //----------初始化BL0942计量模块----------
-    UART_BL0942_INST();
-    xTaskCreate(BL0942_READ_TASK, "BL0942_READ_TASK", 4096, NULL, 4, NULL); //启动从BL0942周期读取电量数据的任务
+    bl0942_uart_inst();
+    bl0942_task_start();
     
 //----------初始化WIFI----------
-    WIFI_GPIO18_INIT(); //初始化WIFI连接状态指示灯
 
     // 初始化NVS
     esp_err_t ret = nvs_flash_init();
@@ -62,18 +55,17 @@ void setup()
     start_webserver();
 
 //----------初始化4G模块----------
-    UART_4G_INST();
-
-    xTaskCreate(AIR780EP_RX_TASK, "AIR780EP_RX_TASK", 4096, NULL, 5, NULL);
-    xTaskCreate(AIR780EP_INST, "AIR780EP_INST", 4096, NULL, 1, NULL);
+    lte4g_uart_inst();
+    lte4g_rx_task_start();
+    lte4g_software_inst_start();
 
 //----------初始化MQTT----------
     while (1)
     {
         //等待WIFI和4G其中任一连上MQTT服务器
-        if(WIFI_CONNECTED_FLAG == 1 || Air780EP_ONLINE_FLAG == 1)
+        if(appwifi_get_connected() == 1 || lte4g_get_online() == 1)
         {
-            MQTT_WIFI_INIT();
+            mqtt_wifi_init();
             break;
         }
 
@@ -82,9 +74,9 @@ void setup()
     
     while (1)
     {
-        if(MQTT_WIFI_CONNECTED_FLAG == 1 || Air780EP_ONLINE_FLAG == 1)
+        if(get_mqtt_wifi_connected_flag() == 1 || lte4g_get_online() == 1)
         {
-            xTaskCreate(MQTT_UPDATE_DAEMON, "MQTT_UPDATE_DAEMON", 4096, NULL, 3, NULL);
+            xTaskCreate(MQTT_UPDATE_DAEMON, "MQTT_UPDATE_DAEMON", 4096, NULL, 1, NULL);
             break;
         }
 

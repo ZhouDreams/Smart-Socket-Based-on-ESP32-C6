@@ -5,9 +5,19 @@
     Email: zhoudreamstk@foxmail.com
 */
 
-#ifndef __BL0942_H__
-#define __BL0942_H__
+#pragma once
 
+#include "driver/uart.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define UART_BL0942_NUM LP_UART_NUM_0
+#define UART_BL0942_BAUD_RATE 9600 //BL0942
+#define UART_BL0942_TX 5 //GPIO5
+#define UART_BL0942_RX 4 //GPIO4
+#define BUF_SIZE 1024
 #define BL0942_READ_CMD 0b01011000 //读取命令字节
 #define BL0942_IRMS_ADDR 0x03 //电流有效值寄存器
 #define BL0942_VRMS_ADDR 0x04 //电压有效值寄存器
@@ -19,15 +29,16 @@
 
 #define BL0942_WRITE_CMD 0b10101000
 
-extern float BL0942_POWER;
-extern int POWER_THRESH;
-extern int POWER_ACCUMULATION;
+void bl0942_uart_inst();
 
-void UART_BL0942_INST();
-void BL0942_READ_TASK();
+void bl0942_task_start();
 
+float bl0942_get_power();
 
+int bl0942_get_power_thresh();
 
+#ifdef __cplusplus
+}
 #endif
 
 

@@ -13,13 +13,13 @@
 #include "esp_netif.h"
 #include "esp_http_server.h"
 #include "cJSON.h"
-#include "http_server.h"
+#include "http-server.h"
 #include <sys/stat.h>
 #include "nvs_flash.h"
 #include "lwip/ip4_addr.h"
-#include "wifi_manager.h"
+#include "app-wifi.h"
 
-static const char *TAG = "http_server.c";
+#define TAG "http-server"
 static httpd_handle_t server = NULL;
 
 // 初始化SPIFFS
