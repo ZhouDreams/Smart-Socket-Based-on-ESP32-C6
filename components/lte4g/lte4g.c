@@ -14,17 +14,9 @@
 #include "string.h"
 #include "lte4g.h"
 #include "button-and-relay.h"
+#include "app-mqtt.h"
 
 #define TAG "lte4g"
-
-uart_config_t uart_config_4G = {
-    .baud_rate = UART_4G_BAUD_RATE,
-    .data_bits = UART_DATA_8_BITS,
-    .parity = UART_PARITY_DISABLE,
-    .stop_bits = UART_STOP_BITS_1,
-    .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-    .source_clk = UART_SCLK_DEFAULT,
-};
 
 typedef struct
 {
@@ -45,19 +37,26 @@ typedef struct
     bool MCONFIG;
     bool MIPSTART;
     bool MCONNECT;
-} air780ep_init_task_t;
+} lte4g_init_task_t;
 
+static uart_config_t s_lte4g_uart_cfg = {
+    .baud_rate = UART_4G_BAUD_RATE,
+    .data_bits = UART_DATA_8_BITS,
+    .parity = UART_PARITY_DISABLE,
+    .stop_bits = UART_STOP_BITS_1,
+    .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+    .source_clk = UART_SCLK_DEFAULT,
+};
 
-
-QueueHandle_t lte4g_uart_event_queue;
-static at_waiter_t at_waiter;
-static bool lte4g_online_flag = 0;
+QueueHandle_t s_lte4g_uart_event_queue;
+static at_waiter_t s_at_waiter;
+static EventGroupHandle_t s_lte4g_online_event;
 
 //4G模块串口驱动安装
 void lte4g_uart_inst()
 {
-    ESP_ERROR_CHECK(uart_driver_install(UART_4G_NUM, BUF_SIZE, BUF_SIZE, 10, &lte4g_uart_event_queue, 0));
-    ESP_ERROR_CHECK(uart_param_config(UART_4G_NUM, &uart_config_4G));
+    ESP_ERROR_CHECK(uart_driver_install(UART_4G_NUM, BUF_SIZE, BUF_SIZE, 10, &s_lte4g_uart_event_queue, 0));
+    ESP_ERROR_CHECK(uart_param_config(UART_4G_NUM, &s_lte4g_uart_cfg));
     ESP_ERROR_CHECK(uart_set_pin(UART_4G_NUM, UART_4G_TX, UART_4G_RX, -1, -1));
     ESP_LOGI(TAG, "UART_4G has been installed.");
 }
@@ -65,7 +64,9 @@ void lte4g_uart_inst()
 //4G模块初始化
 static void lte4g_software_inst_task()
 {
-    air780ep_init_task_t air780ep_init_task = {0,0,0,0,0,0,0,0,0};
+    s_lte4g_online_event = xEventGroupCreate();
+    xEventGroupSetBits(s_lte4g_online_event, LTE4G_OFFLINE);
+    lte4g_init_task_t lte4g_init_task = {0,0,0,0,0,0,0,0,0};
 
     char response[BUF_SIZE] = "\0";
     //重启模块
@@ -74,7 +75,7 @@ static void lte4g_software_inst_task()
         strcpy(response, lte4g_send_at_cmd(AT_RESET)); 
         vTaskDelay(pdMS_TO_TICKS(2000));
         if( strstr(response, "OK") == NULL) goto restart_4g;
-        air780ep_init_task.RESET = 1;
+        lte4g_init_task.RESET = 1;
         ESP_LOGI(TAG, "The module has been reset.");
 
         for(int i=3;i>=1;i--)
@@ -89,7 +90,7 @@ static void lte4g_software_inst_task()
         vTaskDelay(pdMS_TO_TICKS(1000));
 
         //检查SIM卡状态
-        if(air780ep_init_task.CPIN == 0){
+        if(lte4g_init_task.CPIN == 0){
             memset(response,0,sizeof(response));
             strcpy(response, lte4g_send_at_cmd(AT_CPIN)); 
             char *data_pointer = NULL;
@@ -99,12 +100,12 @@ static void lte4g_software_inst_task()
                 ESP_LOGE(TAG, "Bad SIM Card Status! Returning.");
                 continue;
             }
-            air780ep_init_task.CPIN = 1;
+            lte4g_init_task.CPIN = 1;
             ESP_LOGI(TAG, "SIM Card is ready.");
         }
 
         //检查信号强度
-        if(air780ep_init_task.CSQ == 0){
+        if(lte4g_init_task.CSQ == 0){
             memset(response,0,sizeof(response));
             strcpy(response, lte4g_send_at_cmd(AT_CSQ)); 
             char *data_pointer = NULL;
@@ -125,11 +126,11 @@ static void lte4g_software_inst_task()
                 continue;
             }
 
-            air780ep_init_task.CSQ = 1;
+            lte4g_init_task.CSQ = 1;
         }
 
         //查询网络注册情况
-        if(air780ep_init_task.CGATT == 0){
+        if(lte4g_init_task.CGATT == 0){
             memset(response,0,sizeof(response));
             strcpy(response, lte4g_send_at_cmd(AT_CGATT)); 
             char *data_pointer = NULL;
@@ -140,11 +141,11 @@ static void lte4g_software_inst_task()
                 continue;
             }
 
-            air780ep_init_task.CGATT = 1;
+            lte4g_init_task.CGATT = 1;
         }
 
         //配置数据网络
-        if(air780ep_init_task.CSTT == 0){
+        if(lte4g_init_task.CSTT == 0){
             memset(response,0,sizeof(response));
             lte4g_send_at_cmd(AT_CIPSHUT);
             strcpy(response, lte4g_send_at_cmd(AT_CSTT)); 
@@ -155,11 +156,11 @@ static void lte4g_software_inst_task()
             }
             else ESP_LOGI(TAG, "Data network configuration success.");
 
-            air780ep_init_task.CSTT = 1;
+            lte4g_init_task.CSTT = 1;
         }
 
         //激活数据网络
-        if(air780ep_init_task.CIFSR == 0){
+        if(lte4g_init_task.CIFSR == 0){
             memset(response,0,sizeof(response));
             strcpy(response, lte4g_send_at_cmd(AT_CIICR)); 
             if( strstr(response, "OK") == NULL) 
@@ -178,71 +179,21 @@ static void lte4g_software_inst_task()
             }
             else ESP_LOGI(TAG, "Data network activation success.");
 
-            air780ep_init_task.CIFSR = 1;
+            lte4g_init_task.CIFSR = 1;
         }
 
-        //设置MQTT相关参数
-        if(air780ep_init_task.MCONFIG == 0){
-            memset(response,0,sizeof(response));
-            strcpy(response, lte4g_send_at_cmd(AT_MCONFIG));
-            if( strstr(response, "OK") == NULL) continue;
-            air780ep_init_task.MCONFIG = 1;
-            ESP_LOGI(TAG, "MQTT Config Configured.");
-        }
-    
-        //建立TCP连接
-        if(air780ep_init_task.MIPSTART == 0){
-            memset(response,0,sizeof(response));
-            strcpy(response, lte4g_send_at_cmd(AT_MIPSTART));
-            if( strstr(response, "OK") == NULL) continue;
-            air780ep_init_task.MIPSTART = 1;
-            ESP_LOGI(TAG, "TCP Connection Started.");
-        }
-
-        //客户端向服务器请求会话连接
-        if(air780ep_init_task.MCONNECT == 0){
-            //lte4g_send_at_cmd(AT_MDISCONNECT);
-            memset(response,0,sizeof(response));
-            strcpy(response, lte4g_send_at_cmd(AT_MCONNECT));
-            if( strstr(response, "OK") == NULL) continue;
-            air780ep_init_task.MCONNECT = 1;
-            ESP_LOGI(TAG, "MQTT Connection Started.");
-        }
-
-        //订阅主题
-        char cmd[50];    
-
-        sprintf(cmd, "AT+MSUB=\"25108143g/relay_status_ctrl\",0\r\n");
-        memset(response,0,sizeof(response));
-        strcpy(response, lte4g_send_at_no_print(cmd));
-        if(strstr(response,"OK") != NULL) ESP_LOGI(TAG, "25108143g/relay_status_ctrl subscribed.");
-        else
-        {
-            ESP_LOGI(TAG, "25108143g/relay_status_ctrl subscribe failed!");
-            continue;
-        }
-
-    //     sprintf(cmd, "AT+MSUB=\"/topic/power_thresh_ctrl\",0\r\n");
-    //     memset(response,0,sizeof(response));
-    //     strcpy(response, lte4g_send_at_no_print(cmd, AT_RESPONSE_DELAY));
-    //     if(strstr(response,"OK") != NULL) ESP_LOGI(TAG, "/topic/power_thresh_ctrl subscribed.");
-    //     else
-    //     {
-    //         ESP_LOGI(TAG, "topic/power_thresh_ctrl subscribe failed!");
-    //         continue;
-    //     }
         break;
     }
-
-    lte4g_online_flag = 1;
-    ESP_LOGI(TAG, "MQTT 4G has been activated.");
+    xEventGroupClearBits(s_lte4g_online_event, LTE4G_OFFLINE);
+    xEventGroupSetBits(s_lte4g_online_event, LTE4G_ONLINE);
+    ESP_LOGI(TAG, "online event.");
     // xTaskCreate(AIR780EP_LIVE_DAEMON, "AIR780EP_LIVE_DAEMON", 4096, NULL, 1, NULL);
     vTaskDelete(NULL);
 }
 
-bool lte4g_get_online()
+EventGroupHandle_t lte4g_get_online_event()
 {
-    return lte4g_online_flag;
+    return s_lte4g_online_event;
 }
 
 void lte4g_software_inst_start(int priority)
@@ -256,7 +207,7 @@ void lte4g_software_inst_start(int priority)
         2. 异步上报（URC）：模块自己发送的信息，比如MQTT订阅消息
         3. 乱七八糟的东西：比如模块重启时会有个"boot"
     处理串口接收到内容的思路是把收到的消息按行分割，逐行处理。
-    如果是AT指令的返回，就交给at_waiter.at_respond，当检测到OK或ERROR时at_waiter.done;
+    如果是AT指令的返回，就交给s_at_waiter.at_respond，当检测到OK或ERROR时s_at_waiter.done;
     如果是'+'开头的URC，交给urc_handler();
 */
 static void handle_one_line(const char* line, const int line_len)
@@ -265,23 +216,18 @@ static void handle_one_line(const char* line, const int line_len)
     if(strstr(line, "+MSUB:") != NULL)
     {
         ESP_LOGI(TAG, "Received MSUB: %s", line);
-
-        if(strstr(line, "+MSUB: \"25108143g/relay_status_ctrl\",1 byte,1") != NULL)
-        {
-            
-        }
-
+        appmqtt_lte4g_msub_handler(line);
     }
     //如果是正在发送AT指令等回复，则交给AT
-    else if(at_waiter.at_cmd_sending_flag == 1)
+    else if(s_at_waiter.at_cmd_sending_flag == 1)
     {
         //把单行拼接成完整response
-        strcat(at_waiter.at_respond, line);
+        strcat(s_at_waiter.at_respond, line);
 
         //如果发现有OK或ERROR，则说明AT指令的返回完成了
         if( strstr(line, "OK") != NULL || strstr(line, "ERROR") != NULL)
         {
-            xSemaphoreGive(at_waiter.done);
+            xSemaphoreGive(s_at_waiter.done);
         }
 
     }
@@ -292,8 +238,8 @@ static void lte4g_rx_task()
 {
     ESP_LOGI(TAG, "lte4g_rx_task Starts.");
 
-    at_waiter.at_cmd_sending_flag = 0;
-    at_waiter.done = xSemaphoreCreateBinary();
+    s_at_waiter.at_cmd_sending_flag = 0;
+    s_at_waiter.done = xSemaphoreCreateBinary();
 
     uart_event_t event; //UART事件
     static char buf[BUF_SIZE]; //uart_read_bytes用的buf
@@ -302,7 +248,7 @@ static void lte4g_rx_task()
 
     while(1){
 
-        if(xQueueReceive(lte4g_uart_event_queue, &event, portMAX_DELAY))
+        if(xQueueReceive(s_lte4g_uart_event_queue, &event, portMAX_DELAY))
         {
             switch (event.type)
             {
@@ -385,7 +331,7 @@ void lte4g_rx_task_start(int priority)
 //         //     uart_event_t event;
 //         //     int len = 0;
 
-//         //     // if(xQueueReceive(lte4g_uart_event_queue, (void *)&event, (TickType_t)portMAX_DELAY))
+//         //     // if(xQueueReceive(s_lte4g_uart_event_queue, (void *)&event, (TickType_t)portMAX_DELAY))
 //         //     // {
 //         //     //     len = uart_read_bytes(UART_4G_NUM, buffer, BUF_SIZE - 1, 10);
 //         //     // }
@@ -401,32 +347,32 @@ void lte4g_rx_task_start(int priority)
 //发送AT指令并printf回复
 char* lte4g_send_at_cmd(const char* cmd)
 {
-    at_waiter.at_cmd_sending_flag = 1;
-    strcpy(at_waiter.at_respond, "\0");
+    s_at_waiter.at_cmd_sending_flag = 1;
+    strcpy(s_at_waiter.at_respond, "\0");
 
     uart_write_bytes(UART_4G_NUM, cmd, strlen(cmd));
     ESP_LOGI(TAG, "Sent CMD: %s",cmd);
 
     //等待lte4g_rx_task接收完回复后释放信号量，否则阻塞，最多等1秒
-    xSemaphoreTake(at_waiter.done, 1000/portTICK_PERIOD_MS);
+    xSemaphoreTake(s_at_waiter.done, 1000/portTICK_PERIOD_MS);
     
     ESP_LOGI(TAG, "AT Response:");
-    printf("%s",at_waiter.at_respond);
-    at_waiter.at_cmd_sending_flag = 0;
+    printf("%s",s_at_waiter.at_respond);
+    s_at_waiter.at_cmd_sending_flag = 0;
 
-    return at_waiter.at_respond;
+    return s_at_waiter.at_respond;
 }
 
 //发送AT指令但不printf回复
 char* lte4g_send_at_no_print(const char* cmd)
 {
-    at_waiter.at_cmd_sending_flag = 1;
-    strcpy(at_waiter.at_respond, "\0");
+    s_at_waiter.at_cmd_sending_flag = 1;
+    strcpy(s_at_waiter.at_respond, "\0");
 
     uart_write_bytes(UART_4G_NUM, cmd, strlen(cmd));
-    xSemaphoreTake(at_waiter.done, 1000/portTICK_PERIOD_MS);
+    xSemaphoreTake(s_at_waiter.done, 1000/portTICK_PERIOD_MS);
 
-    at_waiter.at_cmd_sending_flag = 0;
+    s_at_waiter.at_cmd_sending_flag = 0;
 
-    return at_waiter.at_respond;
+    return s_at_waiter.at_respond;
 }

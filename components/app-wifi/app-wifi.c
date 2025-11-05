@@ -23,7 +23,7 @@
 
 #define MAX_RETRY_COUNT 5
 static int s_retry_num = 0;
-static bool appwifi_connected = 0;
+static EventGroupHandle_t s_appwifi_online_event;
 
 // WiFi事件处理函数
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
@@ -51,13 +51,15 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
             case WIFI_EVENT_STA_CONNECTED:
                 ESP_LOGI(TAG, "WIFI_EVENT_STA_CONNECTED，已连接到AP");
                 s_retry_num = 0; // 重置重试计数
-                appwifi_connected = 1;
+                xEventGroupClearBits(s_appwifi_online_event, APPWIFI_OFFLINE);
+                xEventGroupSetBits(s_appwifi_online_event, APPWIFI_ONLINE);
                 break;
 
             case WIFI_EVENT_STA_DISCONNECTED:
                 wifi_event_sta_disconnected_t* event = (wifi_event_sta_disconnected_t*) event_data;
                 ESP_LOGW(TAG, "WiFi断开连接，原因:%d", event->reason);
-                appwifi_connected = 0;
+                xEventGroupClearBits(s_appwifi_online_event, APPWIFI_ONLINE);
+                xEventGroupSetBits(s_appwifi_online_event, APPWIFI_OFFLINE);
                 if (s_retry_num < MAX_RETRY_COUNT) {
                     ESP_LOGI(TAG, "重试连接到AP... (%d/%d)", s_retry_num + 1, MAX_RETRY_COUNT);
                     esp_wifi_connect();
@@ -93,9 +95,9 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
     }
 }
 
-bool appwifi_get_connected()
+EventGroupHandle_t appwifi_get_online_event()
 {
-    return appwifi_connected;
+    return s_appwifi_online_event;
 }
 
 // 初始化WiFi软AP
@@ -105,9 +107,10 @@ esp_err_t wifi_init_softap(void)
     ESP_ERROR_CHECK(esp_event_loop_create_default());  // 创建默认事件循环
     esp_netif_create_default_wifi_ap();  // 创建默认WIFI AP
     esp_netif_create_default_wifi_sta(); // 创建默认WIFI STA
-
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();  // 使用默认WiFi初始化配置
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));  // 初始化WiFi
+    s_appwifi_online_event = xEventGroupCreate();
+    xEventGroupSetBits(s_appwifi_online_event, APPWIFI_OFFLINE);
 
     // 注册WiFi事件处理函数
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,

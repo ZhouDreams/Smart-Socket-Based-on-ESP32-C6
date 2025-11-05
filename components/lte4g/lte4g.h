@@ -18,6 +18,8 @@ extern "C" {
 #define UART_4G_TX 10 //GPIO10
 #define UART_4G_RX 11 //GPIO11
 #define BUF_SIZE 1024
+#define LTE4G_ONLINE BIT1
+#define LTE4G_OFFLINE BIT0
 
 //Air780EP AT INIT CMD
 #define AT_CIMI "AT+CIMI\r\n"
@@ -42,7 +44,7 @@ void lte4g_uart_inst(); //4G UART初始化
 
 void lte4g_software_inst_start(int priority); //初始化4G模块
 
-bool lte4g_get_online();
+EventGroupHandle_t lte4g_get_online_event();
 
 void lte4g_rx_task_start(int priority); //4G模块串口信息接收
 
