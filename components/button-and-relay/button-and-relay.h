@@ -17,7 +17,7 @@ extern "C" {
 #define MAX_OP_INTERVAL_MS 300
 
 typedef enum { TOGGLE, SET } RelayOpType_t;
-typedef enum { SCR_BUTTON, SRC_MQTT, SRC_LTE4G } RelayOpSource_t;
+typedef enum { SRC_BUTTON, SRC_MQTT, SRC_LTE4G } RelayOpSource_t;
 typedef enum { RELAY_OFF = 0, RELAY_ON = 1 } RelayTargetLevel_t;
 
 typedef struct 
@@ -32,7 +32,7 @@ void button_gpio_inst();
 
 void relay_gpio_inst(); 
 
-void relay_task_start();
+void relay_task_start(int priority);
 
 void relay_send_cmd(RelayCMD_t relay_cmd);
 

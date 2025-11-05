@@ -20,12 +20,12 @@ static QueueHandle_t s_relay_queue;
 //GPIO中断服务函数
 static void IRAM_ATTR button_isr_handler(void* arg)
 {
-    RelayCMD_t relay_cmd_buf = {
-        .relay_op_source = SCR_BUTTON,
+    RelayCMD_t relay_cmd = {
+        .relay_op_source = SRC_BUTTON,
         .relay_op_type = TOGGLE,
         .op_tick = xTaskGetTickCount()
     };
-    xQueueSendFromISR(s_relay_queue, &relay_cmd_buf, pdFALSE);
+    relay_send_cmd(relay_cmd);
 }
 
 //按钮GPIO初始化
@@ -70,28 +70,53 @@ static void relay_set_level(RelayTargetLevel_t level)
 static void relay_task()
 {
     RelayCMD_t relay_cmd_buf;
-    uint32_t last_event_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
+    uint32_t last_event_time = pdTICKS_TO_MS(xTaskGetTickCount());
     while (1) {
         if(xQueueReceive(s_relay_queue, &relay_cmd_buf, portMAX_DELAY)) {
-            if (relay_cmd_buf.op_tick * portTICK_PERIOD_MS - last_event_time < MAX_OP_INTERVAL_MS) {
+            if (pdTICKS_TO_MS(relay_cmd_buf.op_tick) - last_event_time < MAX_OP_INTERVAL_MS) {
                 continue;
             }
             switch (relay_cmd_buf.relay_op_type) {
             case TOGGLE:
                 s_relay_level = s_relay_level == RELAY_ON? RELAY_OFF:RELAY_ON;
                 relay_set_level(s_relay_level);
+                switch (relay_cmd_buf.relay_op_source) {
+                    case SRC_BUTTON:
+                        ESP_LOGI(TAG, "Relay toggled, source button.");
+                        break;
+                    case SRC_MQTT:
+                        ESP_LOGI(TAG, "Relay toggled, source wifi-mqtt.");
+                        break;
+                    case SRC_LTE4G:
+                        ESP_LOGI(TAG, "Relay toggled, source lte4g.");
+                        break;
+                    default:
+                        break;
+                }
                 break;
             case SET:
                 s_relay_level = relay_cmd_buf.relay_target_level;
                 relay_set_level(s_relay_level);
+                switch (relay_cmd_buf.relay_op_source) {
+                    case SRC_BUTTON:
+                        ESP_LOGI(TAG, "Relay set to %d, source button.", s_relay_level);
+                        break;
+                    case SRC_MQTT:
+                        ESP_LOGI(TAG, "Relay set to %d, source wifi-mqtt.", s_relay_level);
+                        break;
+                    case SRC_LTE4G:
+                        ESP_LOGI(TAG, "Relay set to %d, source lte4g.", s_relay_level);
+                        break;
+                    default:
+                        break;
+                }
+                break;
             default:
                 break;
             }
-            last_event_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
+            last_event_time = pdTICKS_TO_MS(xTaskGetTickCount());
         }
     }
-    
-
 }
 
 //启动继电器任务
