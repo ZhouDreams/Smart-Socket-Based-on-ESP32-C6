@@ -7,6 +7,7 @@
 #pragma once
 
 #include "driver/uart.h"
+#include "button-and-relay.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -17,9 +18,15 @@ extern "C" {
 #define MQTT_USERNAME "zhoudreams"
 #define MQTT_PASSWD "sbzjx250"
 
-void mqtt_wifi_init();
+void appmqtt_wifi_init(int priority);
 
-void mqtt_lte4g_init();
+void appmqtt_lte4g_init(int priority);
+
+void appmqtt_lte4g_update_task_start(int priority);
+
+void appmqtt_lte4g_relay_update(RelayTargetLevel_t level);
+
+void appmqtt_lte4g_msub_handler(const char* );
 
 void MQTT_UPDATE_DAEMON();
 
