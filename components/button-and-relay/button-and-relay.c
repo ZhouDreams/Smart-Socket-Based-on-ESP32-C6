@@ -95,9 +95,9 @@ static void relay_task()
 }
 
 //启动继电器任务
-void relay_task_start()
+void relay_task_start(int priority)
 {
     s_relay_queue = xQueueCreate(10, sizeof(RelayCMD_t));
-    xTaskCreate(relay_task, "relay_task", 4096, NULL, 10, NULL);
+    xTaskCreate(relay_task, "relay_task", 4096, NULL, priority, NULL);
     ESP_LOGI(TAG, "relay_task has been started.");
 }

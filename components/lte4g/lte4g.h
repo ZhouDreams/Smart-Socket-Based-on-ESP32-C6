@@ -40,11 +40,11 @@ extern "C" {
 
 void lte4g_uart_inst(); //4G UART初始化
 
-void lte4g_software_inst_start(); //初始化4G模块
+void lte4g_software_inst_start(int priority); //初始化4G模块
 
 bool lte4g_get_online();
 
-void lte4g_rx_task_start(); //4G模块串口信息接收
+void lte4g_rx_task_start(int priority); //4G模块串口信息接收
 
 // void AIR780EP_LIVE_DAEMON(); //检测4G联网是否正常
 

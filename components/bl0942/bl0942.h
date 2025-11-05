@@ -31,7 +31,7 @@ extern "C" {
 
 void bl0942_uart_inst();
 
-void bl0942_task_start();
+void bl0942_task_start(int priority);
 
 float bl0942_get_power();
 

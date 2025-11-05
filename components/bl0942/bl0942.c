@@ -104,9 +104,9 @@ static void bl0942_task()
 
 }
 
-void bl0942_task_start()
+void bl0942_task_start(int priority)
 {
-    xTaskCreate(bl0942_task, "bl0942_task", 4096, NULL, 1, NULL); //启动从BL0942周期读取电量数据的任务
+    xTaskCreate(bl0942_task, "bl0942_task", 4096, NULL, priority, NULL); //启动从BL0942周期读取电量数据的任务
 }
 
 float bl0942_get_power()

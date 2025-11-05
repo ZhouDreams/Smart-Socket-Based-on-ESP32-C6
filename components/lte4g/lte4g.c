@@ -245,9 +245,9 @@ bool lte4g_get_online()
     return lte4g_online_flag;
 }
 
-void lte4g_software_inst_start()
+void lte4g_software_inst_start(int priority)
 {
-    xTaskCreate(lte4g_software_inst_task, "lte4g_software_inst_task", 4096, NULL, 1, NULL);
+    xTaskCreate(lte4g_software_inst_task, "lte4g_software_inst_task", 4096, NULL, priority, NULL);
 }
 
 /*处理接收到的串口数据中的一行
@@ -347,9 +347,9 @@ static void lte4g_rx_task()
     }
 }
 
-void lte4g_rx_task_start()
+void lte4g_rx_task_start(int priority)
 {
-     xTaskCreate(lte4g_rx_task, "lte4g_rx_task", 4096, NULL, 1, NULL);
+     xTaskCreate(lte4g_rx_task, "lte4g_rx_task", 4096, NULL, priority, NULL);
 }
 
 //检测4G联网是否正常

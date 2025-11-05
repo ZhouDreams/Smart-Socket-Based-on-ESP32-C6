@@ -30,11 +30,11 @@ void setup()
 //----------初始化继电器和按钮----------
     relay_gpio_inst();
     button_gpio_inst();
-    relay_task_start();     //启动继电器任务
+    relay_task_start(10);     //启动继电器任务
 
 //----------初始化BL0942计量模块----------
     bl0942_uart_inst();
-    bl0942_task_start();
+    bl0942_task_start(1);
     
 //----------初始化WIFI----------
 
@@ -56,8 +56,8 @@ void setup()
 
 //----------初始化4G模块----------
     lte4g_uart_inst();
-    lte4g_rx_task_start();
-    lte4g_software_inst_start();
+    lte4g_rx_task_start(10);
+    lte4g_software_inst_start(1);
 
 //----------初始化MQTT----------
     while (1)
