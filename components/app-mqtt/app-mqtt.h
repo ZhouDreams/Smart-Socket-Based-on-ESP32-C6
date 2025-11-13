@@ -13,22 +13,24 @@
 extern "C" {
 #endif
 
-#define MQTT_URI "mqtt://mqtt.jovisdreams.site"
-#define MQTT_CLIENT_ID "Smart_Socket_WIFI"
-#define MQTT_USERNAME "zhoudreams"
-#define MQTT_PASSWD "sbzjx250"
+#define MQTT_URI "mqtt://broker.emqx.io"
+#define MQTT_CLIENT_ID "25108143g-wifi"
+#define MQTT_USERNAME ""
+#define MQTT_PASSWD ""
 
-void appmqtt_wifi_init(int priority);
+void appmqtt_wifi_init_task_start(int priority);
 
-void appmqtt_lte4g_init(int priority);
+void appmqtt_wifi_update_task_start(int priority);
+
+void appmqtt_lte4g_init_task_start(int priority);
+
+EventGroupHandle_t appmqtt_get_lte4g_connected_event();
 
 void appmqtt_lte4g_update_task_start(int priority);
 
 void appmqtt_lte4g_relay_update(RelayTargetLevel_t level);
 
 void appmqtt_lte4g_msub_handler(const char* );
-
-void MQTT_UPDATE_DAEMON();
 
 void MQTT_RELAY_STATUS_UPDATE_WIFI(int level);
 
