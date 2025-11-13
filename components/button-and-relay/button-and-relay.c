@@ -25,7 +25,7 @@ static void IRAM_ATTR button_isr_handler(void* arg)
         .relay_op_type = TOGGLE,
         .op_tick = xTaskGetTickCount()
     };
-    relay_send_cmd(relay_cmd);
+    relay_send_cmd_from_isr(relay_cmd);
 }
 
 //按钮GPIO初始化
@@ -52,6 +52,11 @@ void relay_gpio_inst()
 void relay_send_cmd(RelayCMD_t relay_cmd)
 {
     xQueueSend(s_relay_queue, &relay_cmd, portMAX_DELAY);
+}
+
+void relay_send_cmd_from_isr(RelayCMD_t relay_cmd)
+{
+    xQueueSendFromISR(s_relay_queue, &relay_cmd, pdFALSE);
 }
 
 //获取当前继电器状态

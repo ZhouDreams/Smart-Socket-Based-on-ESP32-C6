@@ -36,6 +36,8 @@ void relay_task_start(int priority);
 
 void relay_send_cmd(RelayCMD_t relay_cmd);
 
+void relay_send_cmd_from_isr(RelayCMD_t relay_cmd);
+
 RelayTargetLevel_t relay_get_level();
 
 #ifdef __cplusplus
