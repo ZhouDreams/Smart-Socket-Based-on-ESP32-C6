@@ -22,6 +22,8 @@
 #include "config.h"
 
 #define TAG "main"
+#define PRIORITY_NORMAL 1
+#define PRIORITY_REALTIME 10
 
 void setup()
 {
@@ -30,11 +32,11 @@ void setup()
 //----------初始化继电器和按钮----------
     relay_gpio_inst();
     button_gpio_inst();
-    relay_task_start(10);     //启动继电器任务
+    relay_task_start(PRIORITY_REALTIME);     //启动继电器任务
 
 //----------初始化BL0942计量模块----------
     bl0942_uart_inst();
-    bl0942_task_start(1);
+    bl0942_task_start(PRIORITY_NORMAL);
     
 //----------初始化WIFI----------
 
@@ -55,36 +57,14 @@ void setup()
     start_webserver();
 
 //----------初始化4G模块----------
-    lte4g_uart_inst();
-    lte4g_rx_task_start(10);
-    lte4g_software_inst_start(1);
+    lte4g_module_init_task_start(1);
+    vTaskDelay(pdMS_TO_TICKS(200));
 
 //----------初始化MQTT----------
-    while (1)
-    {
-        //等待WIFI和4G其中任一连上MQTT服务器
-        if(appwifi_get_connected() == 1 || lte4g_get_online() == 1)
-        {
-            mqtt_wifi_init();
-            break;
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(200));
-    }
-    
-    while (1)
-    {
-        if(get_mqtt_wifi_connected_flag() == 1 || lte4g_get_online() == 1)
-        {
-            xTaskCreate(MQTT_UPDATE_DAEMON, "MQTT_UPDATE_DAEMON", 4096, NULL, 1, NULL);
-            break;
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(200));
-    }
-    
-
-
+    appmqtt_wifi_init_task_start(PRIORITY_NORMAL);
+    appmqtt_wifi_update_task_start(PRIORITY_NORMAL);
+    appmqtt_lte4g_init_task_start(PRIORITY_NORMAL);
+    appmqtt_lte4g_update_task_start(PRIORITY_NORMAL);
 
     ESP_LOGI(TAG, "Setup() returns.");
 
