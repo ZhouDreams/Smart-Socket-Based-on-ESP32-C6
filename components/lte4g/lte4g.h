@@ -17,9 +17,11 @@ extern "C" {
 #define UART_4G_BAUD_RATE 115200
 #define UART_4G_TX 10 //GPIO10
 #define UART_4G_RX 11 //GPIO11
+#define LTE4G_EN_GPIO 12
 #define BUF_SIZE 1024
 #define LTE4G_ONLINE BIT1
 #define LTE4G_OFFLINE BIT0
+#define AT_WAIT_TICKS_NORMAL pdMS_TO_TICKS(1000)
 
 //Air780EP AT INIT CMD
 #define AT_CIMI "AT+CIMI\r\n"
@@ -33,26 +35,21 @@ extern "C" {
 #define AT_CIFSR "AT+CIFSR\r\n" //查询数据网络是否激活成功
 
 //Air780EP AT MQTT CMD
-#define AT_MCONFIG "AT+MCONFIG=\"Smart_Socket_4G\",\"\",\"\",0,0,\"25108143g/online\",\"0\"\r\n" //设置 MQTT 相关参数
-#define AT_MQTTMSGSET_1 "AT+MQTTMSGSET=1\r\n" //设置MQTT订阅消息为缓存模式
-#define AT_MIPSTART "AT+MIPSTART=\"test.mosquitto.org\",1883\r\n" //建立 TCP 连接
+#define AT_MCONFIG "AT+MCONFIG=\"lte4g-25108143g\",\"\",\"\",0,0,\"25108143g/online\",\"0\"\r\n" //设置 MQTT 相关参数
+#define AT_MIPSTART "AT+MIPSTART=\"broker.emqx.io\",1883\r\n" //建立 TCP 连接
 #define AT_MCONNECT "AT+MCONNECT=1,10\r\n" //客户端向服务器请求MQTT会话连接
 #define AT_MDISCONNECT "AT+MDISCONNECT\r\n" //关闭MQTT会话连接
 #define AT_MQTTSTATU "AT+MQTTSTATU\r\n" //查询MQTT连接状态
 
-void lte4g_uart_inst(); //4G UART初始化
-
-void lte4g_software_inst_start(int priority); //初始化4G模块
+void lte4g_module_init_task_start(int priority); //初始化4G模块
 
 EventGroupHandle_t lte4g_get_online_event();
 
-void lte4g_rx_task_start(int priority); //4G模块串口信息接收
-
 // void AIR780EP_LIVE_DAEMON(); //检测4G联网是否正常
 
-char* lte4g_send_at_cmd(const char* cmd); //发送AT指令并返回串口的回复内容
+char* lte4g_send_at_cmd(const char* cmd, const char* wait_str, const char* error_str, TickType_t wait_time_ticks); //发送AT指令并返回串口的回复内容，wait_str指的是收到该回复字符串就结束，如发送命令后期待“OK”
 
-char* lte4g_send_at_no_print(const char* cmd); //发送AT指令并返回串口的回复内容，但是不print
+char* lte4g_send_at_no_print(const char* cmd, const char* wait_str, const char* error_str, TickType_t wait_time_ticks); //发送AT指令并返回串口的回复内容，但是不print
 
 #ifdef __cplusplus
 }
