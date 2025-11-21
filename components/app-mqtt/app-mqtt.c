@@ -5,23 +5,31 @@
     Email: zhoudreamstk@foxmail.com
 */
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
+#include "esp_bit_defs.h"
 #include "esp_log.h"
+#include "freertos/idf_additions.h"
 #include "mqtt_client.h"
-#include "esp_event.h"
-#include "esp_netif.h"
-#include "freertos/FreeRTOS.h"
+#include "esp_event.h" // IWYU pragma: keep
+#include "esp_netif.h" // IWYU pragma: keep
+#include "freertos/FreeRTOS.h" // IWYU pragma: keep
 #include "freertos/task.h"
 #include "freertos/queue.h"
-#include "driver/uart.h"
+#include "driver/uart.h" // IWYU pragma: keep
 #include "bl0942.h"
 #include "lte4g.h"
 #include "app-wifi.h"
 #include "button-and-relay.h"
 #include "app-mqtt.h"
 
-#define TAG "app-mqtt"
+#define MQTT_WIFI_CONNECTED_BIT    BIT1
+#define MQTT_WIFI_DISCONNECTED_BIT    BIT0
+#define MQTT_LTE4G_CONNECTED_BIT    BIT1
+#define MQTT_LTE4G_DISCONNECTED_BIT    BIT0
+
+static const char* TAG = "app-mqtt";
 
 typedef struct 
 {
@@ -57,8 +65,8 @@ static esp_mqtt_client_config_t mqtt_wifi_cfg = {
     };
 
 static esp_mqtt_client_handle_t client_now; //当前MQTT客户端句柄
-static bool s_mqtt_wifi_connected_flag;
-static EventGroupHandle_t s_lte4g_mqtt_connected_event;
+static EventGroupHandle_t s_wifi_mqtt_connected_event; //mqtt客户端是否wifi在线
+static EventGroupHandle_t s_lte4g_mqtt_connected_event; //mqtt客户端是否4g在线
 
 static void log_error_if_nonzero(const char *message, int error_code)
 {
@@ -77,7 +85,8 @@ static void appmqtt_event_handler(void *handler_args, esp_event_base_t base, int
 
     switch ((esp_mqtt_event_id_t)event_id) {
     case MQTT_EVENT_CONNECTED:
-        s_mqtt_wifi_connected_flag = 1;
+        xEventGroupClearBits(s_wifi_mqtt_connected_event, MQTT_WIFI_DISCONNECTED_BIT);
+        xEventGroupSetBits(s_wifi_mqtt_connected_event, MQTT_WIFI_CONNECTED_BIT);
         ESP_LOGW(TAG, "MQTT_EVENT_CONNECTED");
         
         msg_id = esp_mqtt_client_subscribe(client_now, "/topic/relay_status_ctrl", 0);
@@ -87,11 +96,12 @@ static void appmqtt_event_handler(void *handler_args, esp_event_base_t base, int
         ESP_LOGI(TAG, "Subscribed topic power_thresh_ctrl, msg_id=%d", msg_id);
 
         MQTT_RELAY_STATUS_UPDATE_WIFI(relay_get_level());
-        
+    
         break;
 
     case MQTT_EVENT_DISCONNECTED:
-        s_mqtt_wifi_connected_flag = 0;
+        xEventGroupClearBits(s_wifi_mqtt_connected_event, MQTT_WIFI_CONNECTED_BIT);
+        xEventGroupSetBits(s_wifi_mqtt_connected_event, MQTT_WIFI_DISCONNECTED_BIT);
         //lte4g_send_at_no_print("AT+MQTTMSGGET\r\n", "OK", "ERROR", AT_WAIT_TICKS_NORMAL);
         ESP_LOGW(TAG, "MQTT_EVENT_DISCONNECTED");
         break;
@@ -127,7 +137,8 @@ static void appmqtt_event_handler(void *handler_args, esp_event_base_t base, int
         break;
     case MQTT_EVENT_ERROR:
         ESP_LOGW(TAG, "MQTT_EVENT_ERROR");
-        s_mqtt_wifi_connected_flag = 0;
+        xEventGroupClearBits(s_wifi_mqtt_connected_event, MQTT_WIFI_CONNECTED_BIT);
+        xEventGroupSetBits(s_wifi_mqtt_connected_event, MQTT_WIFI_DISCONNECTED_BIT);
         if (event->error_handle->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT) {
             log_error_if_nonzero("reported from esp-tls", event->error_handle->esp_tls_last_esp_err);
             log_error_if_nonzero("reported from tls stack", event->error_handle->esp_tls_stack_err);
@@ -144,11 +155,18 @@ static void appmqtt_event_handler(void *handler_args, esp_event_base_t base, int
 
 static void appmqtt_wifi_init_task()
 {
-    xEventGroupWaitBits(appwifi_get_online_event(), APPWIFI_ONLINE, pdFALSE, pdTRUE, portMAX_DELAY);
+    s_wifi_mqtt_connected_event = xEventGroupCreate();
+    xEventGroupClearBits(s_wifi_mqtt_connected_event, MQTT_WIFI_CONNECTED_BIT);
+    xEventGroupSetBits(s_wifi_mqtt_connected_event, MQTT_WIFI_DISCONNECTED_BIT);
 
+    //等待wifi在线
+    xEventGroupWaitBits(appwifi_get_online_event(), APPWIFI_ONLINE, pdFALSE, pdTRUE, portMAX_DELAY);
+    //初始化mqtt客户端
     esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_wifi_cfg);
-    esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, appmqtt_event_handler, NULL);
-    esp_mqtt_client_start(client);
+    //注册事件处理函数
+    ESP_ERROR_CHECK(esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, appmqtt_event_handler, NULL));
+    //启动mqtt客户端
+    ESP_ERROR_CHECK(esp_mqtt_client_start(client));
 
     vTaskDelete(NULL);
 }
@@ -161,12 +179,19 @@ void appmqtt_wifi_init_task_start(int priority)
 static void appmqtt_wifi_update_task()
 {
     while (1){
-        xEventGroupWaitBits(appwifi_get_online_event(), APPWIFI_ONLINE, pdFALSE, pdTRUE, portMAX_DELAY);
+
+        if (s_wifi_mqtt_connected_event == NULL)
+        {
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            continue;
+        }
+
+        //等待mqtt客户端通过wifi联网成功
+        xEventGroupWaitBits(s_wifi_mqtt_connected_event, MQTT_WIFI_CONNECTED_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
 
         int msg_id;
 
         msg_id = esp_mqtt_client_publish(client_now, "25108143g/online", "1", 0, 1, 0);
-            
         char power[10]="\0";
         sprintf(power, "%0.1fW", bl0942_get_power());
         msg_id = esp_mqtt_client_publish(client_now, "25108143g/power", power, 0, 1, 0);
@@ -195,21 +220,27 @@ void appmqtt_wifi_update_task_start(int priority)
     xTaskCreate(appmqtt_wifi_update_task, "appmqtt_wifi_update_task", 4096, NULL, priority, NULL);
 }
 
+bool appmqtt_get_wifi_connected_flag()
+{
+    return xEventGroupGetBits(s_wifi_mqtt_connected_event) & MQTT_WIFI_CONNECTED_BIT;
+}
+
 static void appmqtt_lte4g_init_task()
 {
     s_lte4g_mqtt_connected_event = xEventGroupCreate();
-    xEventGroupSetBits(s_lte4g_mqtt_connected_event, LTE4G_OFFLINE);
+    xEventGroupClearBits(s_lte4g_mqtt_connected_event, MQTT_LTE4G_CONNECTED_BIT);
+    xEventGroupSetBits(s_lte4g_mqtt_connected_event, MQTT_LTE4G_DISCONNECTED_BIT);
     
     char response[BUF_SIZE] = "\0";
     memset(response,0,sizeof(response));
     appmqtt_lte4g_init_task_t appmqtt_lte4g_init_task = {0,0,0,0};
 
-    xEventGroupWaitBits(lte4g_get_online_event(), LTE4G_ONLINE, pdFALSE, pdTRUE, portMAX_DELAY);
+    xEventGroupWaitBits(lte4g_get_online_event(), MQTT_LTE4G_CONNECTED_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
 
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(200));
         //设置MQTT相关参数
-        if(appmqtt_lte4g_init_task.MCONFIG == 0){
+        if (appmqtt_lte4g_init_task.MCONFIG == 0) {
             memset(response,0,sizeof(response));
             strcpy(response, lte4g_send_at_cmd(AT_MCONFIG, "OK", "ERROR", AT_WAIT_TICKS_NORMAL));
             if( strstr(response, "OK") == NULL) continue;
@@ -218,7 +249,7 @@ static void appmqtt_lte4g_init_task()
         }
     
         //建立TCP连接
-        if(appmqtt_lte4g_init_task.MIPSTART == 0){
+        if (appmqtt_lte4g_init_task.MIPSTART == 0) {
             memset(response,0,sizeof(response));
             strcpy(response, lte4g_send_at_cmd(AT_MIPSTART, "CONNECT OK", "FAIL", portMAX_DELAY));
             if( strstr(response, "CONNECT OK") == NULL) continue;
@@ -227,7 +258,7 @@ static void appmqtt_lte4g_init_task()
         }
 
         //客户端向服务器请求会话连接
-        if(appmqtt_lte4g_init_task.MCONNECT == 0){
+        if (appmqtt_lte4g_init_task.MCONNECT == 0) {
             //lte4g_send_at_cmd(AT_MDISCONNECT);
             memset(response,0,sizeof(response));
             strcpy(response, lte4g_send_at_cmd(AT_MCONNECT, "CONNACK OK", "FAIL", portMAX_DELAY));
@@ -237,7 +268,7 @@ static void appmqtt_lte4g_init_task()
         }
 
         //订阅主题
-        if(appmqtt_lte4g_init_task.MSUB == 0) {
+        if (appmqtt_lte4g_init_task.MSUB == 0) {
             char cmd[50];    
             sprintf(cmd, "AT+MSUB=\"25108143g/relay_status_ctrl\",0\r\n");
             memset(response,0,sizeof(response));
@@ -264,8 +295,8 @@ static void appmqtt_lte4g_init_task()
         break;
     }
 
-    xEventGroupClearBits(s_lte4g_mqtt_connected_event, LTE4G_OFFLINE);
-    xEventGroupSetBits(s_lte4g_mqtt_connected_event, LTE4G_ONLINE);
+    xEventGroupClearBits(s_lte4g_mqtt_connected_event, MQTT_LTE4G_DISCONNECTED_BIT);
+    xEventGroupSetBits(s_lte4g_mqtt_connected_event, MQTT_LTE4G_CONNECTED_BIT);
     ESP_LOGI(TAG, "lte4g ready.");
     vTaskDelete(NULL);
 }
@@ -275,9 +306,9 @@ void appmqtt_lte4g_init_task_start(int priority)
     xTaskCreate(appmqtt_lte4g_init_task, "appmqtt_lte4g_init_task", 4096, NULL, priority, NULL);
 }
 
-EventGroupHandle_t appmqtt_get_lte4g_connected_event()
+bool appmqtt_get_lte4g_connected_flag()
 {
-    return s_lte4g_mqtt_connected_event;
+    return xEventGroupGetBits(s_lte4g_mqtt_connected_event) & MQTT_LTE4G_CONNECTED_BIT;
 }
 
 static void appmqtt_lte4g_update_task()
@@ -285,14 +316,13 @@ static void appmqtt_lte4g_update_task()
     while (1)
     {
         //如果wifi在线和mqtt_lte4g在线两个事件有一个指针为NULL，说明没初始化好
-        if( appwifi_get_online_event() == NULL || appmqtt_get_lte4g_connected_event() == NULL)
-        {
+        if (s_wifi_mqtt_connected_event == NULL || s_lte4g_mqtt_connected_event == NULL) {
             vTaskDelay(pdMS_TO_TICKS(2000));
             continue;
         }
-        xEventGroupWaitBits(appwifi_get_online_event(), APPWIFI_OFFLINE, pdFALSE, pdTRUE, portMAX_DELAY);
-        xEventGroupWaitBits(appmqtt_get_lte4g_connected_event(), LTE4G_ONLINE, pdFALSE, pdTRUE, portMAX_DELAY);
-        if ((xEventGroupGetBits(appwifi_get_online_event()) & APPWIFI_OFFLINE) == 0) continue;
+        xEventGroupWaitBits(s_wifi_mqtt_connected_event, MQTT_WIFI_DISCONNECTED_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
+        xEventGroupWaitBits(s_lte4g_mqtt_connected_event, MQTT_LTE4G_CONNECTED_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
+        if (appmqtt_get_wifi_connected_flag() == 1) continue;
         
         ESP_LOGW(TAG, "WIFI disconnected, MQTT Updating through 4G.");
         char cmd[50];
@@ -377,7 +407,3 @@ void MQTT_RELAY_STATUS_UPDATE_WIFI(int level)
     ESP_LOGI(TAG, "relay_status message published, msg_id=%d, relay = %s", msg_id, data);
 }
 
-bool get_mqtt_wifi_connected_flag()
-{
-    return s_mqtt_wifi_connected_flag;
-}
