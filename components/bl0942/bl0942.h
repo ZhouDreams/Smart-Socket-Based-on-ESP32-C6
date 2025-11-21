@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "driver/uart.h"
+#include "driver/uart.h" // IWYU pragma: keep
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,7 +29,7 @@ extern "C" {
 
 #define BL0942_WRITE_CMD 0b10101000
 
-void bl0942_uart_inst();
+esp_err_t bl0942_uart_inst();
 
 void bl0942_task_start(int priority);
 

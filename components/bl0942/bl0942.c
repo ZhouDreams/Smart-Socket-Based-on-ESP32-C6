@@ -10,12 +10,12 @@
 #include <math.h>
 #include "esp_log.h"
 #include "driver/uart.h"
-#include "freertos/FreeRTOS.h"
+#include "freertos/FreeRTOS.h" // IWYU pragma: keep
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "bl0942.h"
 
-#define TAG "bl0942"
+static const char* TAG = "bl0942";
 
 uart_config_t uart_config_BL0942 = {
     .baud_rate = UART_BL0942_BAUD_RATE,
@@ -30,12 +30,13 @@ static float s_bl0942_power = 0; //BL0942检测到的有功功率
 static int s_bl0942_power_thresh = 2500; //用户设置的功率限制，默认为2500W
 
 //BL0942 IC初始化
-void bl0942_uart_inst()
+esp_err_t bl0942_uart_inst()
 {
     ESP_ERROR_CHECK(uart_driver_install(UART_BL0942_NUM, BUF_SIZE, BUF_SIZE, 10, NULL, 0));
     ESP_ERROR_CHECK(uart_param_config(UART_BL0942_NUM, &uart_config_BL0942));
     ESP_ERROR_CHECK(uart_set_pin(UART_BL0942_NUM, UART_BL0942_TX, UART_BL0942_RX, -1, -1));
     ESP_LOGI(TAG, "UART_BL0942 has been installed.\n");
+    return ESP_OK;
 }
 
 //BL0942电量计量任务
@@ -80,13 +81,20 @@ static void bl0942_task()
             continue;
         }
 
+        // v_rms_raw = (response[6] << 16) | (response[5] << 8) | response[4]; 
+        // voltage_AC_IN = (v_rms_raw * 1.218*( 390*5 + 0.51 )) / (73989*0.51*1000);//3.824=（R1+R2）/R1*1000
+        // a_rms_raw = (response[3] << 16) | (response[2] << 8) | response[1]; 
+        // current_OUT =  (a_rms_raw * 1.218 ) / (305978/(0.001*1000));
+        // p_rms_raw = (response[12] << 16) | (response[11] << 8) | response[10];
+        // power_LOAD = (p_rms_raw * 1.218 * 1.218 * (390*5 + 0.51) ) / (3537 * 1 * 0.51 * 1000);
+        // if(power_LOAD > 10000) continue; //在继电器切换的时候有时会出现20000多瓦的异常数据，原因不明，先治标再说
+
         v_rms_raw = (response[6] << 16) | (response[5] << 8) | response[4]; 
         voltage_AC_IN = (v_rms_raw * 1.218*( 390*5 + 0.51 )) / (73989*0.51*1000);//3.824=（R1+R2）/R1*1000
         a_rms_raw = (response[3] << 16) | (response[2] << 8) | response[1]; 
-        current_OUT =  (a_rms_raw * 1.218 ) / (305978/(0.001*1000));
+        current_OUT =  (a_rms_raw * 1.218 ) / (305978*3/(0.001*1000));
         p_rms_raw = (response[12] << 16) | (response[11] << 8) | response[10];
-        power_LOAD = (p_rms_raw * 1.218 * 1.218 * (390*5 + 0.51) ) / (3537 * 1 * 0.51 * 1000);
-        if(power_LOAD > 10000) continue; //在继电器切换的时候有时会出现20000多瓦的异常数据，原因不明，先治标再说
+        power_LOAD = (p_rms_raw * 1.218 * 1.218 * (390*5 + 0.51) ) / (3537 * 1 * 0.51 * 1000 * 3);
 
         s_bl0942_power = roundf(power_LOAD*10)/10;
         if(s_bl0942_power > s_bl0942_power_thresh)
@@ -95,7 +103,7 @@ static void bl0942_task()
             // xQueueSendFromISR(relay_event_queue, &change, NULL);
             // ESP_LOGE(TAG, "Power exceeds the limit! Shut the relay.");
         }
-        ESP_LOGI(TAG, "Voltage: %0.1fV, Current: %0.1fA, Power: %0.1fW",voltage_AC_IN, current_OUT, s_bl0942_power);
+        //ESP_LOGI(TAG, "Voltage: %0.1fV, Current: %0.1fA, Power: %0.1fW",voltage_AC_IN, current_OUT, s_bl0942_power);
         
 
         vTaskDelay(pdMS_TO_TICKS(500));

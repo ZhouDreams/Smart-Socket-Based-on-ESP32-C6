@@ -10,11 +10,13 @@
 extern "C" {
 #endif
 
+#include "freertos/FreeRTOS.h" // IWYU pragma: keep
+
 #define GPIO0_PIN 6 //继电器GPIO0
 #define GPIO1_PIN 7 //按钮GPIO1
 #define GPIO_RELAY_NUM GPIO_NUM_0
 #define GPIO_BUTTON_NUM GPIO_NUM_1
-#define MAX_OP_INTERVAL_MS 300
+#define MAX_OP_INTERVAL_MS 200
 
 typedef enum { TOGGLE, SET } RelayOpType_t;
 typedef enum { SRC_BUTTON, SRC_MQTT, SRC_LTE4G } RelayOpSource_t;
@@ -28,9 +30,9 @@ typedef struct
     TickType_t op_tick;
 } RelayCMD_t;
 
-void button_gpio_inst(); 
+esp_err_t button_gpio_inst(); 
 
-void relay_gpio_inst(); 
+esp_err_t relay_gpio_inst(); 
 
 void relay_task_start(int priority);
 
