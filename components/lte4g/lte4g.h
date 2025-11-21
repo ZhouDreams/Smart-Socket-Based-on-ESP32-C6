@@ -6,7 +6,7 @@
 */
 #pragma once
 
-#include "driver/uart.h"
+#include "driver/uart.h" // IWYU pragma: keep
 
 #ifdef __cplusplus
 extern "C" {

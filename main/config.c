@@ -12,7 +12,7 @@
 #include "esp_wifi.h"
 #include "config.h"
 
-#define TAG "config"
+static const char* TAG = "config";
 
 int Air780EP_ONLINE_FLAG = 0;
 int WIFI_CONNECTED_FLAG = 0;

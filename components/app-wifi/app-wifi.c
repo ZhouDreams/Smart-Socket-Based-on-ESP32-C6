@@ -1,18 +1,18 @@
 #include <string.h>
-#include "freertos/FreeRTOS.h"
+#include "freertos/FreeRTOS.h" // IWYU pragma: keep
 #include "freertos/task.h"
-#include "driver/gpio.h"
+#include "driver/gpio.h" // IWYU pragma: keep
 #include "esp_mac.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_log.h"
-#include "nvs_flash.h"
-#include "lwip/err.h"
-#include "lwip/sys.h"
+#include "nvs_flash.h" // IWYU pragma: keep
+#include "lwip/err.h" // IWYU pragma: keep
+#include "lwip/sys.h" // IWYU pragma: keep
 #include "app-wifi.h"
-#include "app-mqtt.h"
+#include "app-mqtt.h" // IWYU pragma: keep
 
-#define TAG "app-wifi"
+static const char* TAG = "app-wifi";
 
 // WiFi配置参数
 #define EXAMPLE_ESP_WIFI_SSID      "ESP32-C6"        // WiFi名称
@@ -31,31 +31,31 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
 {
     if (event_base == WIFI_EVENT) {
         switch (event_id) {
-            case WIFI_EVENT_AP_STACONNECTED:
+            case WIFI_EVENT_AP_STACONNECTED: {
                 wifi_event_ap_staconnected_t* ap_event = (wifi_event_ap_staconnected_t*) event_data;
                 ESP_LOGI(TAG, "设备 "MACSTR" 已连接, AID=%d",
                          MAC2STR(ap_event->mac), ap_event->aid);
                 break;
-
-            case WIFI_EVENT_AP_STADISCONNECTED:
+            }
+            case WIFI_EVENT_AP_STADISCONNECTED: {
                 wifi_event_ap_stadisconnected_t* ap_disc_event = (wifi_event_ap_stadisconnected_t*) event_data;
                 ESP_LOGI(TAG, "设备 "MACSTR" 已断开连接, AID=%d",
                          MAC2STR(ap_disc_event->mac), ap_disc_event->aid);
                 break;
-
-            case WIFI_EVENT_STA_START:
+            }
+            case WIFI_EVENT_STA_START: {
                 ESP_LOGI(TAG, "WIFI_EVENT_STA_START，尝试连接到AP...");
                 esp_wifi_connect();
                 break;
-
-            case WIFI_EVENT_STA_CONNECTED:
+            }
+            case WIFI_EVENT_STA_CONNECTED: {
                 ESP_LOGI(TAG, "WIFI_EVENT_STA_CONNECTED，已连接到AP");
                 s_retry_num = 0; // 重置重试计数
                 xEventGroupClearBits(s_appwifi_online_event, APPWIFI_OFFLINE);
                 xEventGroupSetBits(s_appwifi_online_event, APPWIFI_ONLINE);
                 break;
-
-            case WIFI_EVENT_STA_DISCONNECTED:
+            }
+            case WIFI_EVENT_STA_DISCONNECTED: {
                 wifi_event_sta_disconnected_t* event = (wifi_event_sta_disconnected_t*) event_data;
                 ESP_LOGW(TAG, "WiFi断开连接，原因:%d", event->reason);
                 xEventGroupClearBits(s_appwifi_online_event, APPWIFI_ONLINE);
@@ -76,6 +76,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                     }
                 }
                 break;
+            }
                 
         }
     } else if (event_base == IP_EVENT) {

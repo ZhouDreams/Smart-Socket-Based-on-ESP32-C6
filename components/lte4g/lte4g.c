@@ -5,7 +5,7 @@
     Email: zhoudreamstk@foxmail.com
 */
 
-#include "freertos/FreeRTOS.h"
+#include "freertos/FreeRTOS.h" // IWYU pragma: keep 
 #include "driver/uart.h"
 #include "driver/gpio.h"
 #include <string.h>
@@ -14,10 +14,10 @@
 #include "esp_log.h"
 #include "string.h"
 #include "lte4g.h"
-#include "button-and-relay.h"
+#include "button-and-relay.h" // IWYU pragma: keep
 #include "app-mqtt.h"
 
-#define TAG "lte4g"
+static const char* TAG = "lte4g";
 
 typedef struct
 {

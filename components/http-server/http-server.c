@@ -16,10 +16,10 @@
 #include "http-server.h"
 #include <sys/stat.h>
 #include "nvs_flash.h"
-#include "lwip/ip4_addr.h"
+#include "lwip/ip4_addr.h" // IWYU pragma: keep
 #include "app-wifi.h"
 
-#define TAG "http-server"
+static const char* TAG = "http-server";
 static httpd_handle_t server = NULL;
 
 // 初始化SPIFFS
