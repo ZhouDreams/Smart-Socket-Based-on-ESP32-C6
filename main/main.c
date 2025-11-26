@@ -30,18 +30,7 @@ void setup()
 {
     ESP_LOGI(TAG, "Enter setup().");
 
-//----------初始化继电器和按钮----------
-    ESP_ERROR_CHECK(relay_gpio_inst());
-    ESP_ERROR_CHECK(button_gpio_inst());
-    relay_task_start(PRIORITY_REALTIME);     //启动继电器任务
-
-//----------初始化BL0942计量模块----------
-    ESP_ERROR_CHECK(bl0942_uart_inst());
-    bl0942_task_start(PRIORITY_NORMAL);
-    
-//----------初始化WIFI----------
-
-    // 初始化NVS
+//----------初始化NVS----------
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
@@ -52,6 +41,16 @@ void setup()
     // 初始化SPIFFS
     ESP_ERROR_CHECK(init_spiffs());
 
+//----------初始化继电器和按钮----------
+    ESP_ERROR_CHECK(relay_gpio_inst());
+    ESP_ERROR_CHECK(button_gpio_inst());
+    relay_task_start(PRIORITY_REALTIME);     //启动继电器任务
+
+//----------初始化BL0942计量模块----------
+    ESP_ERROR_CHECK(bl0942_uart_inst());
+    bl0942_task_start(PRIORITY_NORMAL);
+    
+//----------初始化WIFI----------
     ESP_LOGI(TAG, "Starting WiFi in AP mode");
     ESP_ERROR_CHECK(wifi_init_softap());
 
