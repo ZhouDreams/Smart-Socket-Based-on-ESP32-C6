@@ -84,7 +84,8 @@ static void relay_task()
     TickType_t last_event_tick = xTaskGetTickCount();
     while (1) {
         if(xQueueReceive(s_relay_queue, &relay_cmd_buf, portMAX_DELAY)) {
-            if (pdTICKS_TO_MS( relay_cmd_buf.op_tick - last_event_tick ) < MAX_OP_INTERVAL_MS) {
+            if ((pdTICKS_TO_MS( relay_cmd_buf.op_tick - last_event_tick ) < MAX_OP_INTERVAL_MS) \
+            && (relay_cmd_buf.relay_op_source != SRC_BL0942)) {
                 continue;
             }
             switch (relay_cmd_buf.relay_op_type) {
@@ -106,6 +107,11 @@ static void relay_task()
                         relay_set_level(s_relay_level);
                         ESP_LOGI(TAG, "Relay toggled, source lte4g.");
                         break;
+                    case SRC_BL0942:
+                        s_relay_level = relay_cmd_buf.relay_target_level;
+                        relay_set_level(s_relay_level);
+                        ESP_LOGI(TAG, "Relay toggled, source bl0942.");
+                        break;
                     default:
                         break;
                 }
@@ -122,6 +128,9 @@ static void relay_task()
                         break;
                     case SRC_LTE4G:
                         ESP_LOGI(TAG, "Relay set to %d, source lte4g.", s_relay_level);
+                        break;
+                    case SRC_BL0942:
+                        ESP_LOGI(TAG, "Relay set to %d, source bl0942.", s_relay_level);
                         break;
                     default:
                         break;
