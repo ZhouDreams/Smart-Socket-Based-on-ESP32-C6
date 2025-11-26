@@ -26,6 +26,7 @@ typedef struct
     char at_error_response[BUF_SIZE];
     char at_respond[BUF_SIZE];
     SemaphoreHandle_t done;
+    SemaphoreHandle_t occupied;
     bool error_occurred;
 
 } at_waiter_t;
@@ -80,7 +81,7 @@ static void handle_one_line(const char* line, const int line_len)
     if(strstr(line, "+MSUB:") != NULL)
     {
         ESP_LOGI(TAG, "Received MSUB: %s", line);
-        appmqtt_lte4g_msub_handler(line);
+        xQueueSend(appmqtt_get_lte4g_msub_queue(), line, portMAX_DELAY);
     }
     //如果是正在发送AT指令等回复，则交给AT
     else if(s_at_waiter.at_cmd_sending_flag == 1)
@@ -110,7 +111,8 @@ static void lte4g_rx_task()
     ESP_LOGI(TAG, "lte4g_rx_task Starts.");
 
     s_at_waiter.at_cmd_sending_flag = 0;
-    s_at_waiter.done = xSemaphoreCreateBinary();
+    s_at_waiter.done = xSemaphoreCreateCounting(1, 0);
+    s_at_waiter.occupied = xSemaphoreCreateMutex();
 
     uart_event_t event; //UART事件
     static char buf[BUF_SIZE]; //uart_read_bytes用的buf
@@ -143,7 +145,12 @@ static void lte4g_rx_task()
                         //如果发现'\n'字符说明已经收集到一行
                         if(c == '\n')
                         {
-                            ESP_LOGI(TAG, "RX received line: %s", line);
+                            // 打印line时去掉最后的换行符，以免多输出一行
+                            int printable_len = line_len;
+                            if (printable_len > 0 && line[printable_len - 1] == '\n') {
+                                printable_len--;
+                            }
+                            ESP_LOGI(TAG, "RX received line: %.*s", printable_len, line);
                             //处理单行数据
                             handle_one_line(line, line_len);
 
@@ -184,35 +191,29 @@ static void lte4g_module_init_task()
     lte4g_init_task_t lte4g_init_task = {0,0,0,0,0,0,0,0,0};
 
     char response[BUF_SIZE] = "\0";
-    //重启模块
-        // memset(response,0,sizeof(response));
-        // strcpy(response, lte4g_send_at_cmd(AT_RESET)); 
-        // vTaskDelay(pdMS_TO_TICKS(2000));
-        // if( strstr(response, "OK") == NULL) goto restart_4g;
-        // lte4g_init_task.RESET = 1;
-        // ESP_LOGI(TAG, "The module has been reset.");
 
-        gpio_set_level(LTE4G_EN_GPIO, 1);
+    gpio_set_level(LTE4G_EN_GPIO, 1);
 
-        for(int i=3;i>=1;i--)
-        {
-            ESP_LOGI(TAG, "Starting 4G INIT in %ds...",i);
-            vTaskDelay(pdMS_TO_TICKS(1000));
-        }
+
+    uint8_t retry_count = 0;
 
     while (1)
     {
-        ESP_LOGI(TAG, "Trying to INIT 4G...");
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        retry_count++;
+
+        if (retry_count > 10) {
+            ESP_LOGE(TAG, "4G INIT failed after 10 retries. Returning.");
+            ESP_LOGE(TAG, "Please check the 4G module and the SIM card. If you want to try again, please power the whole system again.");
+            vTaskDelete(NULL);
+        }
+        ESP_LOGI(TAG, "Trying to INIT 4G in 3 seconds... (%d of 10)",retry_count);
+        vTaskDelay(pdMS_TO_TICKS(3000));
 
         //检查SIM卡状态
-        if(lte4g_init_task.CPIN == 0){
+        if (lte4g_init_task.CPIN == 0) {
             memset(response,0,sizeof(response));
-            strcpy(response, lte4g_send_at_cmd(AT_CPIN, "OK", "ERROR", AT_WAIT_TICKS_NORMAL)); 
-            char *data_pointer = NULL;
-        
-            if( strstr(response, "READY") == NULL)
-            {
+            strcpy(response, lte4g_send_at_no_print(AT_CPIN, "OK", "ERROR", AT_WAIT_TICKS_NORMAL)); 
+            if ( strstr(response, "READY") == NULL) {
                 ESP_LOGE(TAG, "Bad SIM Card Status! Returning.");
                 continue;
             }
@@ -221,9 +222,9 @@ static void lte4g_module_init_task()
         }
 
         //检查信号强度
-        if(lte4g_init_task.CSQ == 0){
+        if (lte4g_init_task.CSQ == 0) {
             memset(response,0,sizeof(response));
-            strcpy(response, lte4g_send_at_cmd(AT_CSQ, "OK", "ERROR", AT_WAIT_TICKS_NORMAL)); 
+            strcpy(response, lte4g_send_at_no_print(AT_CSQ, "OK", "ERROR", AT_WAIT_TICKS_NORMAL)); 
             char *data_pointer = NULL;
             data_pointer = strstr(response, "+CSQ: ") + 6;
             int csq = *(data_pointer + 1) == ','?(*data_pointer - '0') : (*data_pointer - '0')*10 + (*(data_pointer+1) - '0');
@@ -246,9 +247,9 @@ static void lte4g_module_init_task()
         }
 
         //查询网络注册情况
-        if(lte4g_init_task.CGATT == 0){
+        if (lte4g_init_task.CGATT == 0) {
             memset(response,0,sizeof(response));
-            strcpy(response, lte4g_send_at_cmd(AT_CGATT, "OK", "ERROR", AT_WAIT_TICKS_NORMAL)); 
+            strcpy(response, lte4g_send_at_no_print(AT_CGATT, "OK", "ERROR", AT_WAIT_TICKS_NORMAL)); 
             char *data_pointer = NULL;
             data_pointer = strstr(response, "+CGATT: ");
             if (data_pointer == NULL ){
@@ -266,10 +267,10 @@ static void lte4g_module_init_task()
         }
 
         //配置数据网络
-        if(lte4g_init_task.CSTT == 0){
+        if (lte4g_init_task.CSTT == 0) {
             memset(response,0,sizeof(response));
-            lte4g_send_at_cmd(AT_CIPSHUT, "OK", "ERROR", AT_WAIT_TICKS_NORMAL);
-            strcpy(response, lte4g_send_at_cmd(AT_CSTT, "OK", "ERROR", AT_WAIT_TICKS_NORMAL)); 
+            lte4g_send_at_no_print(AT_CIPSHUT, "OK", "ERROR", AT_WAIT_TICKS_NORMAL);
+            strcpy(response, lte4g_send_at_no_print(AT_CSTT, "OK", "ERROR", AT_WAIT_TICKS_NORMAL)); 
             if( strstr(response, "OK") == NULL)
             {
                 ESP_LOGE(TAG, "Data network configuration failed! Returning.");
@@ -281,9 +282,9 @@ static void lte4g_module_init_task()
         }
 
         //激活数据网络
-        if(lte4g_init_task.CIFSR == 0){
+        if (lte4g_init_task.CIFSR == 0) {
             memset(response,0,sizeof(response));
-            strcpy(response, lte4g_send_at_cmd(AT_CIICR, "OK", "ERROR", AT_WAIT_TICKS_NORMAL)); 
+            strcpy(response, lte4g_send_at_no_print(AT_CIICR, "OK", "ERROR", AT_WAIT_TICKS_NORMAL)); 
             if( strstr(response, "OK") == NULL) 
             {
                 ESP_LOGE(TAG, "Data network activation failed! Returning.");
@@ -292,7 +293,7 @@ static void lte4g_module_init_task()
 
         //查询数据网络是否激活成功
             memset(response,0,sizeof(response));
-            strcpy(response, lte4g_send_at_cmd(AT_CIFSR, ".", "ERROR", AT_WAIT_TICKS_NORMAL)); 
+            strcpy(response, lte4g_send_at_no_print(AT_CIFSR, ".", "ERROR", AT_WAIT_TICKS_NORMAL)); 
             if( strstr(response, "ERROR") != NULL) 
             {
                 ESP_LOGE(TAG, "Data network activation failed! Returning.");
@@ -371,6 +372,8 @@ void lte4g_module_init_task_start(int priority)
 //发送AT指令并printf回复
 char* lte4g_send_at_cmd(const char* cmd, const char* wait_str, const char* error_str,TickType_t wait_time_ticks)
 {
+    xSemaphoreTake(s_at_waiter.occupied, portMAX_DELAY);
+
     s_at_waiter.at_cmd_sending_flag = 1;
     s_at_waiter.error_occurred = 0;
     strcpy(s_at_waiter.at_respond, "\0");
@@ -379,13 +382,13 @@ char* lte4g_send_at_cmd(const char* cmd, const char* wait_str, const char* error
 
     uart_write_bytes(UART_4G_NUM, cmd, strlen(cmd));
     ESP_LOGI(TAG, "Sent CMD: %s",cmd);
-
-    //等待lte4g_rx_task接收完回复后释放信号量，否则阻塞
     xSemaphoreTake(s_at_waiter.done, wait_time_ticks);
-    
+
+    s_at_waiter.at_cmd_sending_flag = 0;
+    xSemaphoreGive(s_at_waiter.occupied);
+
     ESP_LOGI(TAG, "AT Response:");
     printf("%s",s_at_waiter.at_respond);
-    s_at_waiter.at_cmd_sending_flag = 0;
 
     return s_at_waiter.at_respond;
 }
@@ -393,6 +396,8 @@ char* lte4g_send_at_cmd(const char* cmd, const char* wait_str, const char* error
 //发送AT指令但不printf回复
 char* lte4g_send_at_no_print(const char* cmd, const char* wait_str, const char* error_str, TickType_t wait_time_ticks)
 {
+    xSemaphoreTake(s_at_waiter.occupied, portMAX_DELAY);
+
     s_at_waiter.at_cmd_sending_flag = 1;
     s_at_waiter.error_occurred = 0;
     strcpy(s_at_waiter.at_respond, "\0");
@@ -400,9 +405,11 @@ char* lte4g_send_at_no_print(const char* cmd, const char* wait_str, const char* 
     strcpy(s_at_waiter.at_error_response, error_str);
 
     uart_write_bytes(UART_4G_NUM, cmd, strlen(cmd));
+    ESP_LOGI(TAG, "Sent CMD: %s",cmd);
     xSemaphoreTake(s_at_waiter.done, wait_time_ticks);
 
     s_at_waiter.at_cmd_sending_flag = 0;
-
+    xSemaphoreGive(s_at_waiter.occupied);
+    
     return s_at_waiter.at_respond;
 }
