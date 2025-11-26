@@ -10,10 +10,13 @@
 #include <math.h>
 #include "esp_log.h"
 #include "driver/uart.h"
+#include "nvs_flash.h" // IWYU pragma: keep
 #include "freertos/FreeRTOS.h" // IWYU pragma: keep
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "bl0942.h"
+#include "button-and-relay.h"
+
 
 static const char* TAG = "bl0942";
 
@@ -27,7 +30,7 @@ uart_config_t uart_config_BL0942 = {
 };
 
 static float s_bl0942_power = 0; //BL0942检测到的有功功率
-static int s_bl0942_power_thresh = 2500; //用户设置的功率限制，默认为2500W
+static uint32_t s_bl0942_power_thresh = 2500; //用户设置的功率限制，默认为2500W
 
 //BL0942 IC初始化
 esp_err_t bl0942_uart_inst()
@@ -49,6 +52,23 @@ static void bl0942_task()
     float voltage_AC_IN = 0;
     float current_OUT = 0;
     float power_LOAD = 0;
+
+    // 尝试读取NVS中的功率限制
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open("power_thresh", NVS_READWRITE, &nvs_handle);
+    if (err == ESP_OK) {
+        esp_err_t get_err = nvs_get_u32(nvs_handle, "power_thresh", &s_bl0942_power_thresh);
+        if (get_err == ESP_ERR_NVS_NOT_FOUND) {
+            // 键不存在，写入默认值
+            nvs_set_u32(nvs_handle, "power_thresh", s_bl0942_power_thresh);
+            nvs_commit(nvs_handle);
+        }
+        nvs_close(nvs_handle);
+    }
+    else
+    {
+        ESP_LOGE(TAG, "Failed to open NVS for bl0942_power_thresh: %s", esp_err_to_name(err));
+    }
 
     while(1)
     {
@@ -87,7 +107,6 @@ static void bl0942_task()
         // current_OUT =  (a_rms_raw * 1.218 ) / (305978/(0.001*1000));
         // p_rms_raw = (response[12] << 16) | (response[11] << 8) | response[10];
         // power_LOAD = (p_rms_raw * 1.218 * 1.218 * (390*5 + 0.51) ) / (3537 * 1 * 0.51 * 1000);
-        // if(power_LOAD > 10000) continue; //在继电器切换的时候有时会出现20000多瓦的异常数据，原因不明，先治标再说
 
         v_rms_raw = (response[6] << 16) | (response[5] << 8) | response[4]; 
         voltage_AC_IN = (v_rms_raw * 1.218*( 390*5 + 0.51 )) / (73989*0.51*1000);//3.824=（R1+R2）/R1*1000
@@ -95,16 +114,21 @@ static void bl0942_task()
         current_OUT =  (a_rms_raw * 1.218 ) / (305978*3/(0.001*1000));
         p_rms_raw = (response[12] << 16) | (response[11] << 8) | response[10];
         power_LOAD = (p_rms_raw * 1.218 * 1.218 * (390*5 + 0.51) ) / (3537 * 1 * 0.51 * 1000 * 3);
+        if (power_LOAD > 8000) power_LOAD = 0; //在继电器切换的时候有时会出现8000多瓦的异常数据，原因不明，先治标再说
 
         s_bl0942_power = roundf(power_LOAD*10)/10;
         if(s_bl0942_power > s_bl0942_power_thresh)
         {
-            // RELAY_CHANGE_SOURCE change = FROM_BUTTON;
-            // xQueueSendFromISR(relay_event_queue, &change, NULL);
-            // ESP_LOGE(TAG, "Power exceeds the limit! Shut the relay.");
+            RelayCMD_t relay_cmd = {
+                .relay_op_source = SRC_BL0942,
+                .relay_op_type = SET,
+                .relay_target_level = RELAY_OFF,
+                .op_tick = xTaskGetTickCount()
+            };
+            relay_send_cmd(relay_cmd);
+            ESP_LOGW(TAG, "Power %0.1fW exceeds the limit! Shut the relay.", s_bl0942_power);
         }
         //ESP_LOGI(TAG, "Voltage: %0.1fV, Current: %0.1fA, Power: %0.1fW",voltage_AC_IN, current_OUT, s_bl0942_power);
-        
 
         vTaskDelay(pdMS_TO_TICKS(500));
 
@@ -125,4 +149,20 @@ float bl0942_get_power()
 int bl0942_get_power_thresh()
 {
     return s_bl0942_power_thresh;
+}
+
+void bl0942_set_power_thresh(uint32_t power_thresh)
+{
+    s_bl0942_power_thresh = power_thresh;
+    nvs_handle_t nvs_handle;
+    esp_err_t err = nvs_open("power_thresh", NVS_READWRITE, &nvs_handle);
+    if (err == ESP_OK) {
+        nvs_set_u32(nvs_handle, "power_thresh", s_bl0942_power_thresh);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+    else
+    {
+        ESP_LOGE(TAG, "Failed to open NVS for bl0942_power_thresh: %s", esp_err_to_name(err));
+    }
 }

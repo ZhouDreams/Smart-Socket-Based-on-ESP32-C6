@@ -37,6 +37,8 @@ float bl0942_get_power();
 
 int bl0942_get_power_thresh();
 
+void bl0942_set_power_thresh(uint32_t power_thresh);
+
 #ifdef __cplusplus
 }
 #endif
