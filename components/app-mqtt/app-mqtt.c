@@ -8,7 +8,8 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
-#include "esp_bit_defs.h"
+#include <inttypes.h>
+#include <sys/_intsup.h>
 #include "esp_log.h"
 #include "freertos/idf_additions.h"
 #include "mqtt_client.h"
@@ -37,6 +38,9 @@ typedef struct
     bool network;
     bool power;
     bool relay_status;
+    bool wifi_connection;
+    bool lte4g_connection;
+    bool power_thresh;
 } appmqtt_update_task_t;
 
 typedef struct 
@@ -54,7 +58,7 @@ static esp_mqtt_client_config_t mqtt_wifi_cfg = {
         //.credentials.authentication.password = MQTT_PASSWD,
         .network.disable_auto_reconnect = false,
         .network.reconnect_timeout_ms = 5000,
-        .session.keepalive = 5,
+        .session.keepalive = 10,
         .session.last_will.topic = "25108143g/online",
         .session.last_will.msg = "0",
         .session.last_will.msg_len = 1,
@@ -64,10 +68,12 @@ static esp_mqtt_client_config_t mqtt_wifi_cfg = {
 
     };
 
-static esp_mqtt_client_handle_t client_now; //当前MQTT客户端句柄
+static esp_mqtt_client_handle_t s_client_now; //当前MQTT客户端句柄
 static EventGroupHandle_t s_wifi_mqtt_connected_event; //mqtt客户端是否wifi在线
 static EventGroupHandle_t s_lte4g_mqtt_connected_event; //mqtt客户端是否4g在线
+static QueueHandle_t s_lte4g_msub_queue; //4g上报mqtt的msub消息队列
 
+//--------------------------------wifi上报mqtt--------------------------------
 static void log_error_if_nonzero(const char *message, int error_code)
 {
     if (error_code != 0) {
@@ -75,12 +81,13 @@ static void log_error_if_nonzero(const char *message, int error_code)
     }
 }
 
+//wifi上报mqtt的事件处理函数
 static void appmqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
     ESP_LOGD(TAG, "Event dispatched from event loop base=%s, event_id=%" PRIi32 "", base, event_id);
     esp_mqtt_event_handle_t event = event_data;
     esp_mqtt_client_handle_t client = event->client;
-    client_now = client;
+    s_client_now = client;
     int msg_id;
 
     switch ((esp_mqtt_event_id_t)event_id) {
@@ -89,14 +96,19 @@ static void appmqtt_event_handler(void *handler_args, esp_event_base_t base, int
         xEventGroupSetBits(s_wifi_mqtt_connected_event, MQTT_WIFI_CONNECTED_BIT);
         ESP_LOGW(TAG, "MQTT_EVENT_CONNECTED");
         
-        msg_id = esp_mqtt_client_subscribe(client_now, "/topic/relay_status_ctrl", 0);
+        msg_id = esp_mqtt_client_subscribe(s_client_now, "25108143g/relay_status_ctrl", 0);
         ESP_LOGI(TAG, "Subscribed topic relay_status, msg_id=%d", msg_id);
 
-        msg_id = esp_mqtt_client_subscribe(client_now, "/topic/power_thresh_ctrl", 0);
+        msg_id = esp_mqtt_client_subscribe(s_client_now, "25108143g/power_thresh_ctrl", 0);
         ESP_LOGI(TAG, "Subscribed topic power_thresh_ctrl, msg_id=%d", msg_id);
 
-        MQTT_RELAY_STATUS_UPDATE_WIFI(relay_get_level());
-    
+        char relay_status[3]="\0";
+        sprintf(relay_status, "%d", relay_get_level());
+        appmqtt_wifi_update_manually("25108143g/relay_status", relay_status);
+
+        char power_thresh[10]="\0";
+        sprintf(power_thresh, "%d", bl0942_get_power_thresh());
+        appmqtt_wifi_update_manually("25108143g/power_thresh", power_thresh);
         break;
 
     case MQTT_EVENT_DISCONNECTED:
@@ -124,15 +136,24 @@ static void appmqtt_event_handler(void *handler_args, esp_event_base_t base, int
         ESP_LOGW(TAG, "MQTT_EVENT_DATA");
         printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
         printf("DATA=%.*s\r\n", event->data_len, event->data);
-        if( strstr(event->topic, "/topic/relay_status_ctrl") != NULL){
-
-            // relay_waiter.new_status = !relay_get_level();
-            // relay_waiter.source = FROM_INTERNET;
-            // xSemaphoreGive(relay_waiter.change_sig);
+        if( strstr(event->topic, "25108143g/relay_status_ctrl") != NULL){
+            RelayCMD_t relay_cmd = {
+                .relay_op_source = SRC_MQTT,
+                .relay_op_type = TOGGLE,
+                .op_tick = xTaskGetTickCount()
+            };        
+            relay_send_cmd(relay_cmd);
+            vTaskDelay(pdMS_TO_TICKS(100));
+            char relay_status[3]="\0";
+            sprintf(relay_status, "%d", relay_get_level());
+            appmqtt_wifi_update_manually("25108143g/relay_status", relay_status);
         }
-        else if( strstr(event->topic, "/topic/power_thresh_ctrl") != NULL){
-            
-            // POWER_THRESH = atoi(event->data);
+        else if( strstr(event->topic, "25108143g/power_thresh_ctrl") != NULL){
+            uint32_t power_thresh = atoi(event->data);
+            bl0942_set_power_thresh(power_thresh);
+            char power_thresh_str[10]="\0";
+            sprintf(power_thresh_str, "%" PRIu32, power_thresh);
+            appmqtt_wifi_update_manually("25108143g/power_thresh", power_thresh_str);
         }
         break;
     case MQTT_EVENT_ERROR:
@@ -153,6 +174,7 @@ static void appmqtt_event_handler(void *handler_args, esp_event_base_t base, int
     }
 }
 
+//wifi上报mqtt的初始化任务
 static void appmqtt_wifi_init_task()
 {
     s_wifi_mqtt_connected_event = xEventGroupCreate();
@@ -171,11 +193,14 @@ static void appmqtt_wifi_init_task()
     vTaskDelete(NULL);
 }
 
+//启动wifi上报mqtt的初始化任务
 void appmqtt_wifi_init_task_start(int priority)
 {
     xTaskCreate(appmqtt_wifi_init_task, "appmqtt_wifi_init_task", 4096, NULL, priority, NULL);
 }
 
+
+//wifi上报mqtt的更新任务
 static void appmqtt_wifi_update_task()
 {
     while (1){
@@ -191,40 +216,126 @@ static void appmqtt_wifi_update_task()
 
         int msg_id;
 
-        msg_id = esp_mqtt_client_publish(client_now, "25108143g/online", "1", 0, 1, 0);
+        msg_id = esp_mqtt_client_publish(s_client_now, "25108143g/online", "1", 0, 1, 0);
         char power[10]="\0";
         sprintf(power, "%0.1fW", bl0942_get_power());
-        msg_id = esp_mqtt_client_publish(client_now, "25108143g/power", power, 0, 1, 0);
+        msg_id = esp_mqtt_client_publish(s_client_now, "25108143g/power", power, 0, 1, 0);
         //ESP_LOGI(TAG, "Power message published, msg_id=%d, Power = %s", msg_id, data);
 
         char relay_status[3]="\0";
         sprintf(relay_status, "%d", relay_get_level());
-        msg_id = esp_mqtt_client_publish(client_now, "25108143g/relay_status", relay_status, 0, 1, 0);
+        msg_id = esp_mqtt_client_publish(s_client_now, "25108143g/relay_status", relay_status, 0, 1, 0);
         //ESP_LOGI(TAG, "Relay_status message published, msg_id=%d, relay_status = %s", msg_id, data);
 
         char network[6]="Wi-Fi";
-        msg_id = esp_mqtt_client_publish(client_now, "25108143g/network", network, 0, 1, 0);
+        msg_id = esp_mqtt_client_publish(s_client_now, "25108143g/network", network, 0, 1, 0);
 
         char power_thresh[10];
         sprintf(power_thresh, "%d", bl0942_get_power_thresh());
-        msg_id = esp_mqtt_client_publish(client_now, "25108143g/power_thresh", power_thresh, 0, 1, 0);
+        msg_id = esp_mqtt_client_publish(s_client_now, "25108143g/power_thresh", power_thresh, 0, 1, 0);
 
+        char wifi_connection[3];
+        sprintf(wifi_connection, "%d", appmqtt_get_wifi_connected_flag());
+        msg_id = esp_mqtt_client_publish(s_client_now, "25108143g/wifi_connection", wifi_connection, 0, 1, 0);
         ESP_LOGI(TAG, "MQTT Updated through WIFI.");
-        ESP_LOGI(TAG, "Power = %s, Relay_Status = %s, Network = %s, power_thresh = %s.",power,relay_status,network,power_thresh);
+
+        char lte4g_connection[3];
+        sprintf(lte4g_connection, "%d", appmqtt_get_lte4g_connected_flag());
+        msg_id = esp_mqtt_client_publish(s_client_now, "25108143g/lte4g_connection", lte4g_connection, 0, 1, 0);
+        ESP_LOGI(TAG, "Power = %s, Relay_Status = %s, Network = %s, power_thresh = %s, wifi_connection = %s, lte4g_connection = %s.",power,relay_status,network,power_thresh,wifi_connection,lte4g_connection);
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
 }
 
+//启动wifi上报mqtt的更新任务
 void appmqtt_wifi_update_task_start(int priority)
 {
     xTaskCreate(appmqtt_wifi_update_task, "appmqtt_wifi_update_task", 4096, NULL, priority, NULL);
 }
 
+//获取wifi上报mqtt的在线状态
 bool appmqtt_get_wifi_connected_flag()
 {
     return xEventGroupGetBits(s_wifi_mqtt_connected_event) & MQTT_WIFI_CONNECTED_BIT;
 }
 
+//通过wifi更新继电器状态
+esp_err_t appmqtt_wifi_relay_update(RelayTargetLevel_t level)
+{
+    char data[3] = "";
+    sprintf(data, "%d", level);
+    int msg_id = esp_mqtt_client_publish(s_client_now, "25108143g/relay_status", data, 0, 1, 0);
+    ESP_LOGI(TAG, "relay_status message published, msg_id=%d, relay = %s", msg_id, data);
+    return ESP_OK;
+}
+
+esp_err_t appmqtt_wifi_update_manually(const char* topic, const char* data)
+{
+    int msg_id = esp_mqtt_client_publish(s_client_now, topic, data, 0, 1, 0);
+    ESP_LOGI(TAG, "%s message published, msg_id=%d, data=%s", topic, msg_id, data);
+    return ESP_OK;
+}
+
+//--------------------------------4g上报mqtt--------------------------------
+esp_err_t appmqtt_lte4g_update_manually(const char* topic, const char* data)
+{
+    char cmd[100];
+    char response[BUF_SIZE] = "\0";
+    sprintf(cmd, "AT+MPUB=\"%s\",0,0,\"%s\"\r\n", topic, data);
+    memset(response,0,sizeof(response));
+
+    strcpy(response, lte4g_send_at_no_print(cmd, "OK", "ERROR", AT_WAIT_TICKS_NORMAL));
+    taskYIELD();
+    if(strstr(response,"OK") != NULL) ESP_LOGI(TAG, "%s update successful.", topic);
+    else ESP_LOGW(TAG, "%s update failed through 4g!", topic);
+
+    return ESP_OK;
+}
+
+static void appmqtt_lte4g_msub_handle_task()
+{
+    s_lte4g_msub_queue = xQueueCreate(10, sizeof(char[100]));
+    while (1)
+    {
+        char line[100];
+        if (xQueueReceive(s_lte4g_msub_queue, &line, portMAX_DELAY) == pdPASS)
+        {
+            if (appmqtt_get_wifi_connected_flag() == 1) continue;
+            if (strstr(line, "relay_status_ctrl"))
+            {
+                RelayCMD_t relay_cmd = {
+                .relay_op_source = SRC_LTE4G,
+                .relay_op_type = TOGGLE,
+                .op_tick = xTaskGetTickCount()
+                };
+                relay_send_cmd(relay_cmd);
+                char relay_status[3]="\0";
+                sprintf(relay_status, "%d", relay_get_level());
+                appmqtt_lte4g_update_manually("25108143g/relay_status", relay_status);
+            }
+            else if (strstr(line, "power_thresh_ctrl"))
+            {
+                // 从 +MSUB: "25108143g/power_thresh_ctrl",4 byte,<power_thresh> 中提取最后的数字
+                char *last_comma = strrchr(line, ',');
+                uint32_t power_thresh = 0;
+                if (last_comma != NULL) {
+                    power_thresh = atoi(last_comma + 1);
+                    bl0942_set_power_thresh(power_thresh);
+                    char power_thresh_str[10]="\0";
+                    sprintf(power_thresh_str, "%" PRIu32, power_thresh);
+                    appmqtt_lte4g_update_manually("25108143g/power_thresh", power_thresh_str);
+                }
+            }
+        }
+    }
+}
+
+static void appmqtt_lte4g_msub_handle_task_start(int priority)
+{
+    xTaskCreate(appmqtt_lte4g_msub_handle_task, "appmqtt_lte4g_msub_handle_task", 4096, NULL, priority, NULL);
+}
+
+//4g上报mqtt的初始化任务
 static void appmqtt_lte4g_init_task()
 {
     s_lte4g_mqtt_connected_event = xEventGroupCreate();
@@ -242,7 +353,7 @@ static void appmqtt_lte4g_init_task()
         //设置MQTT相关参数
         if (appmqtt_lte4g_init_task.MCONFIG == 0) {
             memset(response,0,sizeof(response));
-            strcpy(response, lte4g_send_at_cmd(AT_MCONFIG, "OK", "ERROR", AT_WAIT_TICKS_NORMAL));
+            strcpy(response, lte4g_send_at_no_print(AT_MCONFIG, "OK", "ERROR", AT_WAIT_TICKS_NORMAL));
             if( strstr(response, "OK") == NULL) continue;
             appmqtt_lte4g_init_task.MCONFIG = 1;
             ESP_LOGI(TAG, "MQTT Config Configured.");
@@ -251,7 +362,7 @@ static void appmqtt_lte4g_init_task()
         //建立TCP连接
         if (appmqtt_lte4g_init_task.MIPSTART == 0) {
             memset(response,0,sizeof(response));
-            strcpy(response, lte4g_send_at_cmd(AT_MIPSTART, "CONNECT OK", "FAIL", portMAX_DELAY));
+            strcpy(response, lte4g_send_at_no_print(AT_MIPSTART, "CONNECT OK", "FAIL", portMAX_DELAY));
             if( strstr(response, "CONNECT OK") == NULL) continue;
             appmqtt_lte4g_init_task.MIPSTART = 1;
             ESP_LOGI(TAG, "TCP Connection Started.");
@@ -259,9 +370,9 @@ static void appmqtt_lte4g_init_task()
 
         //客户端向服务器请求会话连接
         if (appmqtt_lte4g_init_task.MCONNECT == 0) {
-            //lte4g_send_at_cmd(AT_MDISCONNECT);
+            //lte4g_send_at_no_print(AT_MDISCONNECT);
             memset(response,0,sizeof(response));
-            strcpy(response, lte4g_send_at_cmd(AT_MCONNECT, "CONNACK OK", "FAIL", portMAX_DELAY));
+            strcpy(response, lte4g_send_at_no_print(AT_MCONNECT, "CONNACK OK", "FAIL", portMAX_DELAY));
             if( strstr(response, "CONNACK OK") == NULL) continue;
             appmqtt_lte4g_init_task.MCONNECT = 1;
             ESP_LOGI(TAG, "MQTT Connection Started.");
@@ -272,45 +383,49 @@ static void appmqtt_lte4g_init_task()
             char cmd[50];    
             sprintf(cmd, "AT+MSUB=\"25108143g/relay_status_ctrl\",0\r\n");
             memset(response,0,sizeof(response));
-            strcpy(response, lte4g_send_at_cmd(cmd, "OK", "ERROR", AT_WAIT_TICKS_NORMAL));
+            strcpy(response, lte4g_send_at_no_print(cmd, "SUBACK", "ERROR", AT_WAIT_TICKS_NORMAL));
             if(strstr(response,"OK") != NULL) ESP_LOGI(TAG, "25108143g/relay_status_ctrl subscribed.");
             else
             {
-                ESP_LOGI(TAG, "25108143g/relay_status_ctrl subscribe failed!");
+                ESP_LOGE(TAG, "25108143g/relay_status_ctrl subscribe failed!");
+                continue;
+            }
+            sprintf(cmd, "AT+MSUB=\"25108143g/power_thresh_ctrl\",0\r\n");
+            memset(response,0,sizeof(response));
+            strcpy(response, lte4g_send_at_no_print(cmd, "SUBACK", "ERROR", AT_WAIT_TICKS_NORMAL));
+            if(strstr(response,"OK") != NULL) ESP_LOGI(TAG, "25108143g/power_thresh_ctrl subscribed.");
+            else
+            {
+                ESP_LOGE(TAG, "25108143g/power_thresh_ctrl subscribe failed!");
                 continue;
             }
             appmqtt_lte4g_init_task.MSUB = 1;
             ESP_LOGI(TAG, "MQTT Subscribe Success.");
         }
-
-    //     sprintf(cmd, "AT+MSUB=\"/topic/power_thresh_ctrl\",0\r\n");
-    //     memset(response,0,sizeof(response));
-    //     strcpy(response, lte4g_send_at_no_print(cmd, AT_RESPONSE_DELAY));
-    //     if(strstr(response,"OK") != NULL) ESP_LOGI(TAG, "/topic/power_thresh_ctrl subscribed.");
-    //     else
-    //     {
-    //         ESP_LOGI(TAG, "topic/power_thresh_ctrl subscribe failed!");
-    //         continue;
-    //     }
         break;
     }
 
     xEventGroupClearBits(s_lte4g_mqtt_connected_event, MQTT_LTE4G_DISCONNECTED_BIT);
     xEventGroupSetBits(s_lte4g_mqtt_connected_event, MQTT_LTE4G_CONNECTED_BIT);
+
+    appmqtt_lte4g_msub_handle_task_start(9);
     ESP_LOGI(TAG, "lte4g ready.");
     vTaskDelete(NULL);
 }
 
+//启动4g上报mqtt的初始化任务
 void appmqtt_lte4g_init_task_start(int priority)
 {
     xTaskCreate(appmqtt_lte4g_init_task, "appmqtt_lte4g_init_task", 4096, NULL, priority, NULL);
 }
 
+//获取4g上报mqtt的在线状态
 bool appmqtt_get_lte4g_connected_flag()
 {
     return xEventGroupGetBits(s_lte4g_mqtt_connected_event) & MQTT_LTE4G_CONNECTED_BIT;
 }
 
+//4g上报mqtt的更新任务
 static void appmqtt_lte4g_update_task()
 {
     while (1)
@@ -325,17 +440,17 @@ static void appmqtt_lte4g_update_task()
         if (appmqtt_get_wifi_connected_flag() == 1) continue;
         
         ESP_LOGW(TAG, "WIFI disconnected, MQTT Updating through 4G.");
-        char cmd[50];
+        char cmd[100];
         char response[BUF_SIZE] = "\0";
 
-        appmqtt_update_task_t mqtt_update_task = {0,0,0,0};
+        appmqtt_update_task_t mqtt_update_task = {0,0,0,0,0,0,0};
 
         //发送online心跳
         sprintf(cmd, "AT+MPUB=\"25108143g/online\",0,0,\"%s\"\r\n","1");
         memset(response,0,sizeof(response));
         strcpy(response, lte4g_send_at_no_print(cmd, "OK", "ERROR", AT_WAIT_TICKS_NORMAL));
         if(strstr(response,"OK") != NULL) mqtt_update_task.online = 1;
-        else ESP_LOGI(TAG, "Online status update failed!");
+        else ESP_LOGW(TAG, "Online status update failed!");
 
         //上报功耗信息
         char power[10]="\0";
@@ -344,7 +459,7 @@ static void appmqtt_lte4g_update_task()
         memset(response,0,sizeof(response));
         strcpy(response, lte4g_send_at_no_print(cmd, "OK", "ERROR", AT_WAIT_TICKS_NORMAL));
         if (strstr(response,"OK") != NULL) mqtt_update_task.power = 1;
-        else ESP_LOGI(TAG, "Power update failed!");
+        else ESP_LOGW(TAG, "Power update failed!");
 
            //上报继电器状态
         char relay_status[3]="\0";
@@ -353,7 +468,7 @@ static void appmqtt_lte4g_update_task()
         memset(response,0,sizeof(response));
         strcpy(response, lte4g_send_at_no_print(cmd, "OK", "ERROR", AT_WAIT_TICKS_NORMAL));
         if(strstr(response,"OK") != NULL) mqtt_update_task.relay_status = 1;
-        else ESP_LOGI(TAG, "Relay status update failed!");
+        else ESP_LOGW(TAG, "Relay status update failed!");
 
         //上报当前网络
         char network[3]="4G";
@@ -361,19 +476,45 @@ static void appmqtt_lte4g_update_task()
         memset(response,0,sizeof(response));
         strcpy(response, lte4g_send_at_no_print(cmd, "OK", "ERROR", AT_WAIT_TICKS_NORMAL));
         if(strstr(response,"OK") != NULL) mqtt_update_task.network = 1;
-        else ESP_LOGI(TAG, "Network update failed!");
+        else ESP_LOGW(TAG, "Network update failed!");
 
-        ESP_LOGI(TAG, "online, relay_status = %s, power = %s, network = %s updated.", relay_status, power, network);
+        char power_thresh[10];
+        sprintf(power_thresh, "%d", bl0942_get_power_thresh());
+        sprintf(cmd, "AT+MPUB=\"25108143g/power_thresh\",0,0,\"%s\"\r\n",power_thresh);
+        memset(response,0,sizeof(response));
+        strcpy(response, lte4g_send_at_no_print(cmd, "OK", "ERROR", AT_WAIT_TICKS_NORMAL));
+        if(strstr(response,"OK") != NULL) mqtt_update_task.power_thresh = 1;
+        else ESP_LOGW(TAG, "Power threshold update failed!");
+
+        char wifi_connection[3];
+        sprintf(wifi_connection, "%d", appmqtt_get_wifi_connected_flag());
+        sprintf(cmd, "AT+MPUB=\"25108143g/wifi_connection\",0,0,\"%s\"\r\n",wifi_connection);
+        memset(response,0,sizeof(response));
+        strcpy(response, lte4g_send_at_no_print(cmd, "OK", "ERROR", AT_WAIT_TICKS_NORMAL));
+        if(strstr(response,"OK") != NULL) mqtt_update_task.wifi_connection = 1;
+        else ESP_LOGW(TAG, "Wifi connection update failed!");
+
+        char lte4g_connection[3];
+        sprintf(lte4g_connection, "%d", appmqtt_get_lte4g_connected_flag());
+        sprintf(cmd, "AT+MPUB=\"25108143g/lte4g_connection\",0,0,\"%s\"\r\n",lte4g_connection);
+        memset(response,0,sizeof(response));
+        strcpy(response, lte4g_send_at_no_print(cmd, "OK", "ERROR", AT_WAIT_TICKS_NORMAL));
+        if(strstr(response,"OK") != NULL) mqtt_update_task.lte4g_connection = 1;
+        else ESP_LOGW(TAG, "Lte4g connection update failed!");
+
+        ESP_LOGI(TAG, "online, relay_status = %s, power = %s, network = %s, power_thresh = %s, wifi_connection = %s, lte4g_connection = %s updated.", relay_status, power, network, power_thresh, wifi_connection, lte4g_connection);
         vTaskDelay(pdMS_TO_TICKS(2000));
     } 
 }
 
+//启动4g上报mqtt的更新任务
 void appmqtt_lte4g_update_task_start(int priority)
 {
     xTaskCreate( appmqtt_lte4g_update_task, "appmqtt_lte4g_update_task", 4096, NULL, priority, NULL);
 }
 
-void appmqtt_lte4g_relay_update(RelayTargetLevel_t level)
+//通过4g更新继电器状态
+esp_err_t appmqtt_lte4g_relay_updating(RelayTargetLevel_t level)
 {
     char cmd[50];
     char response[BUF_SIZE] = "\0";
@@ -384,26 +525,11 @@ void appmqtt_lte4g_relay_update(RelayTargetLevel_t level)
     strcpy(response, lte4g_send_at_no_print(cmd, "OK", "ERROR", AT_WAIT_TICKS_NORMAL));
     if(strstr(response,"OK") != NULL) ESP_LOGI(TAG, "Relay status change updated through 4g.");
     else ESP_LOGI(TAG, "Relay status update failed!");
+    return ESP_OK;
 }
 
-void appmqtt_lte4g_msub_handler(const char* line)
+QueueHandle_t appmqtt_get_lte4g_msub_queue()
 {
-    if (strstr(line, "relay_status_ctrl"))
-    {
-        RelayCMD_t relay_cmd = {
-        .relay_op_source = SRC_LTE4G,
-        .relay_op_type = TOGGLE,
-        .op_tick = xTaskGetTickCount()
-        };
-        relay_send_cmd(relay_cmd);
-    }
-}
-
-void MQTT_RELAY_STATUS_UPDATE_WIFI(int level)
-{
-    char data[3] = "";
-    sprintf(data, "%d", level);
-    int msg_id = esp_mqtt_client_publish(client_now, "/topic/relay_status", data, 0, 1, 0);
-    ESP_LOGI(TAG, "relay_status message published, msg_id=%d, relay = %s", msg_id, data);
+    return s_lte4g_msub_queue;
 }
 
