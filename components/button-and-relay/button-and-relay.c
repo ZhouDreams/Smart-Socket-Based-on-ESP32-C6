@@ -16,16 +16,25 @@ static const char* TAG = "button-and-relay";
 
 static RelayTargetLevel_t s_relay_level;
 static QueueHandle_t s_relay_queue;
+static TickType_t s_last_button_press_tick = 0;
 
 //GPIO中断服务函数
 static void IRAM_ATTR button_isr_handler(void* arg)
 {
-    RelayCMD_t relay_cmd = {
-        .relay_op_source = SRC_BUTTON,
-        .relay_op_type = TOGGLE,
-        .op_tick = xTaskGetTickCountFromISR()
-    };
-    relay_send_cmd_from_isr(relay_cmd);
+    TickType_t current_tick = xTaskGetTickCountFromISR();
+    if (gpio_get_level(GPIO_BUTTON_NUM) == 0) {
+        if (pdTICKS_TO_MS( current_tick - s_last_button_press_tick ) < MAX_OP_INTERVAL_MS) {
+            return;
+        }
+        s_last_button_press_tick = current_tick;
+        RelayCMD_t relay_cmd = {
+            .relay_op_source = SRC_BUTTON,
+            .relay_op_type = TOGGLE,
+            .op_tick = current_tick
+        };
+        relay_send_cmd_from_isr(relay_cmd);
+    }
+    else return;
 }
 
 //按钮GPIO初始化
@@ -84,10 +93,7 @@ static void relay_task()
     TickType_t last_event_tick = xTaskGetTickCount();
     while (1) {
         if(xQueueReceive(s_relay_queue, &relay_cmd_buf, portMAX_DELAY)) {
-            if ((pdTICKS_TO_MS( relay_cmd_buf.op_tick - last_event_tick ) < MAX_OP_INTERVAL_MS) \
-            && (relay_cmd_buf.relay_op_source != SRC_BL0942)) {
-                continue;
-            }
+            ESP_LOGI(TAG, "Relay command received, source = %d, op_tick = %d, last_event_tick = %d, interval = %dms", relay_cmd_buf.relay_op_source, relay_cmd_buf.op_tick, last_event_tick, pdTICKS_TO_MS( relay_cmd_buf.op_tick - last_event_tick ));
             switch (relay_cmd_buf.relay_op_type) {
             case TOGGLE:
                 switch (relay_cmd_buf.relay_op_source) {

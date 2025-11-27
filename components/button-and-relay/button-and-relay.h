@@ -16,7 +16,7 @@ extern "C" {
 #define GPIO1_PIN 7 //按钮GPIO1
 #define GPIO_RELAY_NUM GPIO_NUM_0
 #define GPIO_BUTTON_NUM GPIO_NUM_1
-#define MAX_OP_INTERVAL_MS 200
+#define MAX_OP_INTERVAL_MS 500
 
 typedef enum { TOGGLE, SET } RelayOpType_t;
 typedef enum { SRC_BUTTON, SRC_MQTT, SRC_LTE4G, SRC_BL0942 } RelayOpSource_t;
